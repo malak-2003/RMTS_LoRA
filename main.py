@@ -100,9 +100,30 @@ def main(args):
         train_data = read_data(TRAIN_DATA_PATH)
         dev_data = read_data(DEV_DATA_PATH)
         test_data = read_data(TEST_DATA_PATH)
+        """
+        ✅ Malak: For testing reading of data : it reads data correctly + length of enteries are correct
+        # Print number of entries
+        print(f"\nTotal number of entries: {len(train_data)}")
 
+
+        # Print first entry with each column on a separate line
+        first_entry = train_data[0]
+        print("\nFirst entry:")
+        for col, val in first_entry.items():
+          print(f"{col}: {val}")
+        """
+        train_dataset = train_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
+        dev_dataset = dev_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
+        test_dataset = test_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
+
+        #Checking the encoded entry 
+        print(tokenizer.decode(train_dataset["input_ids"][0]))
+        print(tokenizer.decode(train_dataset["labels"][0]))
         
-
+        # Number of examples processed
+        print(len(train_dataset["input_ids"])) 
+        print(len(train_dataset["input_ids"])) 
+        
 
 
 if __name__ == "__main__":
@@ -119,7 +140,7 @@ if __name__ == "__main__":
         parser.add_argument("--save_checkpoint_path", type=str, default=None) # !! not used 
         parser.add_argument("--test", type=bool, default=False)
         parser.add_argument("--num_beams", type=int, default=1)
-        parser.add_argument("--data", type=str, default=f"feedback")
+        parser.add_argument("--data", type=str, default=f"asap")
         parser.add_argument("--llm", type=str, default="gpt")
         parser.add_argument('--model_name', '-m', type=str, default='t5-base', help='name of the t5 model')
         parser.add_argument('--learning_rate', '-l', type=float, default=5e-05, help='learning rate')
