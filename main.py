@@ -13,15 +13,16 @@ def main(args):
     print("Main!!!!!!!!!!!!!!!!!")
     set_seed(args)
     """
-    ✅ 🆘 🕵🏻 📌
     My Notes:
 
     Dynamic arguments 
     args.result_path: asap/t5-base  -- saves results?
     args.save_model_path: ckpts_asap/t5-base -- saves checkpoints?
     args.device: cpu -- what it does idk 
-    
 
+    Used Emojis:
+     ✅ 🆘 🕵🏻 📌 👀 🔄 🛠️ 😊 😮‍💨 🚶 📍
+    
     """
 
     # ✅🕵🏻 Malak: Creates ckpts_asap folder with model name folder inside if not created 
@@ -55,7 +56,7 @@ def main(args):
          add_tokens = ["@", "{", "}",'<essay>',"<rationale>","[overall]", "[content]", "[organization]", "[word choice]", "[sentence fluency]", "[conventions]","[prompt adherence]", "[language]", "[narrativity]", "[style]","[voice]", 
                  "overall", "content", "organization", "word choice", "sentence fluency", "conventions", "prompt adherence", "language", "narrativity", "style", "voice"]
     else:
-        print("Other Add additional tokens")
+        print("Feedback Add additional tokens")
         add_tokens = ["@", "{", "}",'<essay>',"<rationale>","[cohesion]", "[syntax]", "[vocabulary]", "[phraseology]", "[grammar]", "[conventions]", "1.0", "1.5", 
                       "2.0", "2.5", "3.0", "3.5", "4.0", "4.5", "5.0", "conventions", "grammar", "vocabulary", "phraseology", "syntax", "cohesion"]
     
@@ -142,6 +143,9 @@ def main(args):
         The batched= True argument means that preprocess_data will be applied to the data in batches, not one sample at a time, which is more efficient.
 
         """
+        if not args.test:
+            print(f"Model Training Fold : {fold}")
+            model = train(model, tokenizer, train_dataset, dev_dataset, args)
         
 
 

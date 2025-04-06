@@ -10,9 +10,11 @@ from tqdm import tqdm
 from evaluation import quadratic_weighted_kappa
 import warnings
 import traceback
+from peft import get_peft_model, LoraConfig
 
 warnings.filterwarnings("ignore")
 
+# NOT Tested 🕵🏻🆘
 def set_seed(args):
     """
     Ensure reproducibility by setting the seed for random number generation.
@@ -26,6 +28,7 @@ def set_seed(args):
         th.backends.cudnn.deterministic = True
         th.backends.cudnn.benchmark = False
 
+# Tested 🕵🏻✅
 def read_data(data_path):
 
     print("👀 Read data -- utils")
@@ -36,6 +39,7 @@ def read_data(data_path):
     
     return dataset
 
+# Tested 🕵🏻✅
 def preprocess_data(examples, tokenizer,args):
 
     print("🔄 Preprocessing Data -- utils")
@@ -73,6 +77,85 @@ def preprocess_data(examples, tokenizer,args):
     essay["labels"] = labels["input_ids"]
     
     return essay
+
+# 🔄 Testing in process
+def train(model, tokenizer, train_dataset, dev_dataset, args=None):
+    """
+    🛠️ Fine-Tuning Part of the Code 
+
+    # LoRA configuration (add low-rank matrices to attention layers)
+    lora_config = LoraConfig(
+    r=8,  # Rank of the low-rank decomposition
+    lora_alpha=32,  # Scaling factor for LoRA
+    lora_dropout=0.1,  # Dropout rate for LoRA layers
+    task_type="SEQ_2_SEQ_LM"
+    )
+
+    # Apply LoRA to the model -- Way 1 (ChatGPT) 
+    model = get_peft_model(model, lora_config)
+
+    # Apply LoRA to the model -- Way 2 (Github)
+    # Link 🔗:(https://gitlab.com/CeADARIreland_Public/llm-resources/-/blob/main/fine_tuning_template_script.py?ref_type=heads) 
+    peft_config=lora_config,  -- put line inside trainer
+
+    """
+
+
+
+    if args.data == "asap":
+        eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
+        
+    else:
+        eval_steps = 1600
+
+    """
+    Training Steps: During training, the model processes batches of data (training steps).
+
+    Evaluation Steps: After every eval_steps training steps, the model is evaluated on a validation dataset, and metrics (e.g., loss, accuracy) are computed. 
+    This helps you monitor the model's performance during training.
+    Evaluations can be linked to checkpoints, meaning the model will be saved after each evaluation step.
+
+    """
+        
+    print("🚶 Size of eval_steps: ", eval_steps)
+    print(f"📍 Result path:{args.result_path}")
+
+    
+
+    # These are the settings that control the training behavior. 
+    training_args = Seq2SeqTrainingArguments(
+                        output_dir=f"./{args.result_path}",           
+                        evaluation_strategy="steps",      
+                        eval_steps=eval_steps,                
+                        per_device_train_batch_size=args.train_batch_size,    
+                        per_device_eval_batch_size=args.train_batch_size,     
+                        num_train_epochs=args.train_epochs,             
+                        predict_with_generate=True,       
+                        load_best_model_at_end=True,      
+                        metric_for_best_model="loss",     
+                        greater_is_better=False,          
+                        save_steps=eval_steps,                 
+                        save_total_limit=15,          
+                        save_safetensors = False,
+                        learning_rate=args.learning_rate,               
+                    )
+    
+   
+    trainer = Seq2SeqTrainer(
+                model=model,
+                args=training_args,
+                train_dataset=train_dataset,
+                eval_dataset=dev_dataset,
+                tokenizer=tokenizer,
+                callbacks=[EarlyStoppingCallback(early_stopping_patience=args.patience), SaveTopModelsCallback(args.save_model_fold_path)]
+ 
+    )
+ 
+    print("😊 Before training 😊")
+    trainer.train()
+    print("😮‍💨 After training 😮‍💨")
+    
+    return model
 
 
 
