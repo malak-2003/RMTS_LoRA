@@ -28,7 +28,7 @@ def set_seed(args):
 
 def read_data(data_path):
 
-    print("utils: read data")
+    print("👀 Read data -- utils")
     
     df = pd.read_csv(data_path)
     
@@ -38,7 +38,7 @@ def read_data(data_path):
 
 def preprocess_data(examples, tokenizer,args):
 
-    print("utils:preprocess_data")
+    print("🔄 Preprocessing Data -- utils")
 
     
     essay = tokenizer([ "<essay> "+ example for example in examples["t5_input"]], max_length=512, truncation=True, padding="max_length")

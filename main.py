@@ -13,7 +13,7 @@ def main(args):
     print("Main!!!!!!!!!!!!!!!!!")
     set_seed(args)
     """
-    ✅ 🆘 
+    ✅ 🆘 🕵🏻 📌
     My Notes:
 
     Dynamic arguments 
@@ -24,22 +24,22 @@ def main(args):
 
     """
 
-    # ✅ Malak: Creates ckpts_asap folder with model name folder inside if not created 
+    # ✅🕵🏻 Malak: Creates ckpts_asap folder with model name folder inside if not created 
     if not os.path.isdir(f"ckpts_{args.result_path}"):
         os.makedirs(f"ckpts_{args.result_path}")
         print(f"line 43 ckpts_{args.result_path}")
 
-    # ✅ Malak: Creates new argument called save_model_path ckpts_asap/t5-base 
+    # ✅🕵🏻 Malak: Creates new argument called save_model_path ckpts_asap/t5-base 
     args.save_model_path = f"ckpts_{args.result_path}"
 
 
-    # 🆘 To be tested : if in test mode it modifies args.load_checkpoint_path to point to a checkpoint directory where model checkpoints are saved
+    # 🆘🕵🏻 To be tested : if in test mode it modifies args.load_checkpoint_path to point to a checkpoint directory where model checkpoints are saved
     if args.test:
         args.load_checkpoint_path = f"ckpts_{args.result_path}"
         print(f"In Test Mode: { args.load_checkpoint_path}")
 
     
-    # ✅ Malak: It always assigns gpu i tried -1/1/0
+    # ✅🕵🏻 Malak: It always assigns gpu i tried -1/1/0
     # If a GPU is available and the user hasn't explicitly set gpu=-1, it assigns a specific CUDA device. Otherwise, it defaults to CPU.
     if th.cuda.is_available() and args.gpu != -1:
         args.device = 'cuda:{}'.format(args.gpu)
@@ -101,7 +101,7 @@ def main(args):
         dev_data = read_data(DEV_DATA_PATH)
         test_data = read_data(TEST_DATA_PATH)
         """
-        ✅ Malak: For testing reading of data : it reads data correctly + length of enteries are correct
+        ✅🕵🏻 Malak: For testing reading of data : it reads data correctly + length of enteries are correct
         # Print number of entries
         print(f"\nTotal number of entries: {len(train_data)}")
 
@@ -116,13 +116,32 @@ def main(args):
         dev_dataset = dev_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
         test_dataset = test_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
 
+
+        """
+        ✅🕵🏻 Malak: For testing processing of data : it reads processes data correctly 
+
         #Checking the encoded entry 
         print(tokenizer.decode(train_dataset["input_ids"][0]))
         print(tokenizer.decode(train_dataset["labels"][0]))
+
         
         # Number of examples processed
         print(len(train_dataset["input_ids"])) 
-        print(len(train_dataset["input_ids"])) 
+        print(len(train_dataset["labels"])) 
+
+        📌 Summary of Function (preprocess_data)
+ 
+        Tokenize Essay and Rationale: The essay and rationale (either GPT or Llama) are tokenized separately and then concatenated.
+
+        Tokenize Labels: The output labels (like scores) are tokenized based on the model type.
+
+        Combine Data: Both the essay input and rationale are merged into a single input sequence, and labels are prepared for the model.
+        x represents a batch of examples
+
+        
+        The batched= True argument means that preprocess_data will be applied to the data in batches, not one sample at a time, which is more efficient.
+
+        """
         
 
 
