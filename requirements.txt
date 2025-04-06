@@ -1,0 +1,8 @@
+scikit-learn            
+scipy
+tqdm
+transformers==4.37.2
+datasets
+numpy
+pandas
+accelerate
