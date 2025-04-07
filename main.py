@@ -10,37 +10,38 @@ import warnings
 warnings.filterwarnings("ignore")
 
 def main(args):
-    print("Main!!!!!!!!!!!!!!!!!")
-    set_seed(args)
     """
-    My Notes:
+    📝 General Notes:
 
     Dynamic arguments 
     args.result_path: asap/t5-base  -- saves results?
     args.save_model_path: ckpts_asap/t5-base -- saves checkpoints?
     args.device: cpu -- what it does idk 
 
-    Used Emojis:
-     ✅ 🆘 🕵🏻 📌 👀 🔄 🛠️ 😊 😮‍💨 🚶 📍
+    Used Emojis 🙃:
+     ✅ 🆘 🕵🏻 📌 👀 🔄 🛠️ 😊 😮‍💨 🚶 📍 📶 💾 💡 🔧 🤔 📟 📃 🚀 🏋️‍♂️ 📤 🚨
+
     
     """
+    print("🦾 THE BIG BOSS")
+    set_seed(args)
 
-    # ✅🕵🏻 Malak: Creates ckpts_asap folder with model name folder inside if not created 
+    # 🕵🏻✅ Malak: Creates ckpts_asap folder with model name folder inside if not created 
     if not os.path.isdir(f"ckpts_{args.result_path}"):
         os.makedirs(f"ckpts_{args.result_path}")
-        print(f"line 43 ckpts_{args.result_path}")
+        print(f"🗂️ New folder created: ckpts_{args.result_path}")
 
-    # ✅🕵🏻 Malak: Creates new argument called save_model_path ckpts_asap/t5-base 
+    # 🕵🏻✅ Malak: Creates new argument called save_model_path ckpts_asap/t5-base 
     args.save_model_path = f"ckpts_{args.result_path}"
 
 
-    # 🆘🕵🏻 To be tested : if in test mode it modifies args.load_checkpoint_path to point to a checkpoint directory where model checkpoints are saved
+    # 🕵🏻🆘 To be tested : if in test mode it modifies args.load_checkpoint_path to point to a checkpoint directory where model checkpoints are saved
     if args.test:
         args.load_checkpoint_path = f"ckpts_{args.result_path}"
         print(f"In Test Mode: { args.load_checkpoint_path}")
 
     
-    # ✅🕵🏻 Malak: It always assigns gpu i tried -1/1/0
+    # 🕵🏻✅ Malak: It always assigns gpu i tried -1/1/0
     # If a GPU is available and the user hasn't explicitly set gpu=-1, it assigns a specific CUDA device. Otherwise, it defaults to CPU.
     if th.cuda.is_available() and args.gpu != -1:
         args.device = 'cuda:{}'.format(args.gpu)
@@ -48,7 +49,7 @@ def main(args):
         args.device = 'cpu'
     
     # Load T5 tokenizer
-    print("Load T5 tokenizer")
+    print("📟 T5 tokenizer")
     tokenizer = T5Tokenizer.from_pretrained(args.model_name)
 
     if args.data == "asap":
@@ -71,9 +72,10 @@ def main(args):
     sub_best_fold_true_dict = dict()
 
 # The function performs 5-fold cross-validation, training and evaluating a separate model for each fold.
+# 💡 From what I understand LoRA helps in datasets where data is not too much or not to little so try decreasing folds if results are not good
 
     for fold in range(1):
-        print(f"In Fold number:{fold}")
+        print(f"🚀 Begining of Fold Number:{fold}")
         model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
         model.use_rationale = True
 
@@ -102,7 +104,7 @@ def main(args):
         dev_data = read_data(DEV_DATA_PATH)
         test_data = read_data(TEST_DATA_PATH)
         """
-        ✅🕵🏻 Malak: For testing reading of data : it reads data correctly + length of enteries are correct
+        🕵🏻✅ Malak: For testing reading of data : it reads data correctly + length of enteries are correct
         # Print number of entries
         print(f"\nTotal number of entries: {len(train_data)}")
 
@@ -119,7 +121,7 @@ def main(args):
 
 
         """
-        ✅🕵🏻 Malak: For testing processing of data : it reads processes data correctly 
+        🕵🏻✅ Malak: For testing processing of data : it reads processes data correctly 
 
         #Checking the encoded entry 
         print(tokenizer.decode(train_dataset["input_ids"][0]))
@@ -144,7 +146,7 @@ def main(args):
 
         """
         if not args.test:
-            print(f"Model Training Fold : {fold}")
+            print(f"🏋️‍♂️ Training Fold : {fold}")
             model = train(model, tokenizer, train_dataset, dev_dataset, args)
         
 
@@ -182,4 +184,4 @@ if __name__ == "__main__":
         # with open(f"./{args.result_path}/final_best_result_dict.pkl", "wb") as f:
         #     pickle.dump(best_fold_result_dict, f)
 
-        
+    
