@@ -78,7 +78,7 @@ def preprocess_data(examples, tokenizer,args):
     
     return essay
 
-# 🔄 Testing in process
+# Tested 🕵🏻✅
 def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
 
@@ -170,7 +170,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     return model
 
 
-
+# 🔄 Testing in process
 from torch.nn import functional as F
 def asap_test(tokenizer, model, test_data, args):
 
@@ -184,7 +184,7 @@ def asap_test(tokenizer, model, test_data, args):
 #qwk_result – Dictionary storing QWK scores for each trait of each essay prompt.
 #pred_dic – Dictionary storing predicted trait scores for each prompt.
 #true_dic – Dictionary storing ground-truth trait scores.
-    print("utils:asap_test")
+    print("Begining of ASAP test 🧠")
 #    These dictionaries will store predictions (pred_dic), actual scores (true_dic), and QWK results (qwk_result) for each essay prompt.
     pred_dic = dict()
     true_dic = dict()
@@ -208,7 +208,7 @@ def asap_test(tokenizer, model, test_data, args):
     }
 #    Initializes dictionaries to store predictions, true labels, and QWK scores for each trait in each prompt.
     for p in range(1,9):
-        print("Initializes dictionaries to store predictions")
+        print("🗂️ Initializes dictionaries to store predictions")
         pred_dic[p] = dict()
         true_dic[p] = dict()
         qwk_result[p] = dict()
@@ -233,68 +233,45 @@ def asap_test(tokenizer, model, test_data, args):
             essay_attention_mask = th.ones(essay_input_ids.size(), dtype=th.long).to(model.device)
 
 #        Calls the encoder of the chosen model to process the essay.
-            print("Calls encoder")
-            if 'bart' in args.model_name:
-                encoder_outputs = model.model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
-            elif 't5' in args.model_name:
-                encoder_outputs = model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
-            elif 'pegasus' in args.model_name:
-                encoder_outputs = model.model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
-            elif 'led' in args.model_name:
-                encoder_outputs = model.led.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
-            
-            
-            
+            print("🟡 Calls Encoder 🟡")
+            encoder_outputs = model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
 
-#         Extracts trait-related information (criteria) from the input.
+                       
+
+#           Extracts trait-related information (criteria) from the input.
             criteria_ids = input_ids_all[:,512:]
             criteria_attention_mask = th.ones(criteria_ids.size(), dtype=th.long).to(model.device)
             
-
-            if 'bart' in args.model_name:
-                criteria_encoder_outputs = model.model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
-                encoder_outputs.last_hidden_state = model.model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
-                                
-            elif 't5' in args.model_name:
 #           Similar to essays, criteria are encoded using the model's encoder.
-                criteria_encoder_outputs = model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+            criteria_encoder_outputs = model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
 #           Combines essay encoding and criteria encoding
-                encoder_outputs.last_hidden_state = model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1)
-                
-            elif 'pegasus' in args.model_name:
-                criteria_encoder_outputs = model.model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
-                encoder_outputs.last_hidden_state = model.model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
-                
-            elif 'led' in args.model_name:
-                criteria_encoder_outputs = model.led.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
-                encoder_outputs.last_hidden_state = model.led.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
-          
-          
+            encoder_outputs.last_hidden_state = model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1)
 
+          
             labels = test['t5_output']
             prompts = test["essay_set"]
 
-#   The decoder start token is used as input.The model generates predictions (trait scores) based on the essay.
+#   The decoder start token is used as input. The model generates predictions (trait scores) based on the essay.
             decoder_start_token_id = model.config.decoder_start_token_id
             
             input_ids = th.tensor([[decoder_start_token_id] for _ in range(encoder_outputs[0].size(0))]).to(args.device)
 
             
-            if "t5" in args.model_name:
-                outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 64, num_beams =1)
-            else:
-                outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 256, num_beams =1)
+            # hena kan fe if else w el eslse other model max_new_token was 256 -- make sure of number 
+            outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 64, num_beams =1)
             
             
 
             for i, (output, true) in enumerate(zip(outputs, labels)):
-#            Converts tokenized output back to readable text.
+                # Converts tokenized output back to readable text.
                 pred = tokenizer.decode(output, skip_special_tokens=True)
                 
                 
                 
                 try:
-#                Parses the predicted scores into a dictionary.
+                    print("Begining of ASAP test 🧠")
+
+                    #Parses the predicted scores into a dictionary.
                     pred_text = pred
                     for key, replacement in compound_keys.items():
                         pred_text = pred_text.replace(key, replacement)
@@ -349,9 +326,15 @@ def asap_test(tokenizer, model, test_data, args):
                     
 #   Computes Quadratic Weighted Kappa (QWK), which measures agreement between predictions and actual scores.
         for prompt in range(1,9):
+            if prompt == 1:
+                print("🏗️ Starting prompt extraction...")
             trait_list = trait_map[prompt]
             
+            first = True
             for trait in trait_list:
+                if first:
+                    print(f"🧮 Calculating QWK for Prompt {prompt}...")
+                    first = False
                 qwk_result[prompt][trait] = quadratic_weighted_kappa(np.array(pred_dic[prompt][trait]), np.array(true_dic[prompt][trait]))
                                            
         log = "Test Result"
@@ -363,6 +346,129 @@ def asap_test(tokenizer, model, test_data, args):
         
 
     return qwk_result, pred_dic, true_dic
+
+
+def feedback_test(tokenizer, model, test_data, args):
+
+    pred_dic = dict()
+    true_dic = dict()
+    qwk_result = dict()
+    trait_list = ["conventions", "grammar", "phraseology", "vocabulary", "syntax", "cohesion"]
+
+   
+    for trait in trait_list:
+        pred_dic[trait] = list()
+        true_dic[trait] = list()
+        qwk_result[trait] = 0.0
+
+
+    model.eval()
+    batch_size = 128
+    with th.no_grad():
+        for i in tqdm(range(0, len(test_data), batch_size)):
+            test = test_data[i:i+batch_size]
+            input_ids_all  = th.tensor(test['input_ids']).to(args.device)
+            attention_mask =  th.tensor(test['attention_mask']).to(args.device)
+
+            essay_input_ids = input_ids_all[:,:512]
+            essay_attention_mask = th.ones(essay_input_ids.size(), dtype=th.long).to(model.device)
+
+            
+            if 'bart' in args.model_name:
+                encoder_outputs = model.model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
+            elif 't5' in args.model_name:
+                encoder_outputs = model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
+            elif 'pegasus' in args.model_name:
+                encoder_outputs = model.model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
+            elif 'led' in args.model_name:
+                encoder_outputs = model.led.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
+            
+           
+            criteria_ids = input_ids_all[:,512:]
+            criteria_attention_mask = th.ones(criteria_ids.size(), dtype=th.long).to(model.device)
+            if 'bart' in args.model_name:
+                criteria_encoder_outputs = model.model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+                encoder_outputs.last_hidden_state = model.model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
+                
+            elif 't5' in args.model_name:
+                criteria_encoder_outputs = model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+                encoder_outputs.last_hidden_state = model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
+                
+                
+            elif 'pegasus' in args.model_name:
+                criteria_encoder_outputs = model.model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+                encoder_outputs.last_hidden_state = model.model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
+                
+            elif 'led' in args.model_name:
+                criteria_encoder_outputs = model.led.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+                encoder_outputs.last_hidden_state = model.led.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
+                    
+                
+            labels = test['t5_output']
+
+            
+            decoder_start_token_id = model.config.decoder_start_token_id
+            
+            input_ids = th.tensor([[decoder_start_token_id] for _ in range(encoder_outputs[0].size(0))]).to(args.device)
+
+            
+            if "flan-t5-base" in args.model_name:
+                outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 256, num_beams =1)
+            else:
+                outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 64, num_beams =1)
+
+            
+
+            for i, (output, true) in enumerate(zip(outputs, labels)):
+                pred = tokenizer.decode(output, skip_special_tokens=True)
+                
+                try:
+                    pred = pred.replace(" ,", ",").replace(". ", ", ").replace(".,", ",").replace("  "," ").replace(" ;",",").replace(" :", ",").replace("and", ",").strip()
+                    pred = pred.replace("1.0", " 1.0").replace("1.5", " 1.5").replace("2.0", " 2.0").replace("2.5", " 2.5").replace("3.0", " 3.0").replace(
+                        "3.5", " 3.5").replace("4.0", " 4.0").replace("4.5", " 4.5").replace("5.0", " 5.0")
+
+                    if args.model_name == "bart":
+                        pred_result = extract_traits(pred)
+                    else:
+                        preds = pred.split(",")
+                        pred_result = dict()
+                        for p in preds:
+                            p = p.strip()
+                            key, value = p.split(' ', 1)
+                            pred_result[key] = float(value)
+                    
+                    true_result = "{" + re.sub(r'(\w+)\s([\d\.]+)', r'"\1": \2', true) + "}"
+                    true_result = eval(true_result)
+
+
+                    for trait in trait_list:
+                        
+                        pred_dic[trait].append(pred_result[trait])
+                        true_dic[trait].append(true_result[trait])
+                    
+                except Exception as e:
+                    
+                    print(f"An error occurred: {e}")
+
+                    # continue
+                    break
+        for trait in trait_list:
+            try:
+                qwk_result[trait] = quadratic_weighted_kappa(np.array(pred_dic[trait]), np.array(true_dic[trait]))
+            except Exception as e:
+                print(f"An error occurred: {e} for BART")
+                traceback.print_exc() 
+                qwk_result[trait] = 0.0
+                                           
+        log = "Test Result"
+        log += f"\n| {qwk_result} |"
+        print(log)
+
+        
+
+    return qwk_result, pred_dic, true_dic
+
+
 
 
 
@@ -386,7 +492,7 @@ def deep_copy_state_dict(state_dict):
         copy_dict[key] = value.clone()
     return copy_dict
 
-
+# Tested 🕵🏻✅
 class SaveTopModelsCallback(TrainerCallback):
     
     def __init__(self, save_path, top_k=2):
