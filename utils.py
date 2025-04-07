@@ -96,13 +96,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     """
     🛠️ Fine-Tuning Part of the Code 
 
-    # LoRA configuration (add low-rank matrices to attention layers)
-    lora_config = LoraConfig(
-    r=8,  # Rank of the low-rank decomposition
-    lora_alpha=32,  # Scaling factor for LoRA
-    lora_dropout=0.1,  # Dropout rate for LoRA layers
-    task_type="SEQ_2_SEQ_LM"
-    )
+
 
     # Apply LoRA to the model -- Way 1 (ChatGPT) 
     model = get_peft_model(model, lora_config)
@@ -113,10 +107,21 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
     """
 
+    # LoRA configuration (add low-rank matrices to attention layers)
+    lora_config = LoraConfig(
+            r=16,  # Starting with a moderate rank
+            lora_alpha=32,  # Scaling factor, usually keep this moderate
+            lora_dropout=0.1,  # Regularization, a common default
+            bias="none",  # Standard choice
+            task_type="SEQ_2_SEQ_LM"  # T5 uses seq2seq
+        )
+    
+    model = get_peft_model(model, lora_config)
+
 
     if args.data == "asap":
-        # eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
-        eval_steps= 500
+        eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
+        # eval_steps= 500
         
     else:
         eval_steps = 1600
