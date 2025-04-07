@@ -148,6 +148,108 @@ def main(args):
         if not args.test:
             print(f"🏋️‍♂️ Training Fold : {fold}")
             model = train(model, tokenizer, train_dataset, dev_dataset, args)
+
+# Loads the best model checkpoint (if available) and evaluates it on the test set.
+            print(f"{args.save_model_fold_path}")
+            for filename in os.listdir(args.save_model_fold_path):
+                if filename.startswith("checkpoint-1"):
+                    
+                    best_model_path = os.path.join(args.save_model_fold_path, filename)
+                    best_checkpoint = th.load(best_model_path)
+                    model.load_state_dict(best_checkpoint)
+                    best_model = model.to(args.device)
+        
+                    if args.data == "asap":
+                        best_result, best_pred_dic, best_true_dic = asap_test(tokenizer, best_model, test_dataset, args)
+                    else:
+                        best_result, best_pred_dic, best_true_dic = feedback_test(tokenizer, best_model, test_dataset, args)
+                    
+# Moves the model to CPU, deletes it, clears CUDA cache, and runs garbage collection to free memory.
+                    
+                    best_model = best_model.cpu()
+        
+                    del best_model
+                    th.cuda.empty_cache()
+                    gc.collect()  
+        
+                elif filename.startswith("checkpoint-2"):
+                    sub_best_model_path = os.path.join(args.save_model_fold_path, filename)
+                    sub_best_checkpoint = th.load(sub_best_model_path)
+                    model.load_state_dict(sub_best_checkpoint)
+                    sub_best_model = model.to(args.device)
+                    if args.data == "asap":
+                        sub_best_result, sub_best_pred_dic, sub_best_true_dic = asap_test(tokenizer, sub_best_model, test_dataset, args)
+                    else:
+                        sub_best_result, sub_best_pred_dic, sub_best_true_dic = feedback_test(tokenizer, sub_best_model, test_dataset, args)
+                    sub_best_model = sub_best_model.cpu()
+                    
+                    del sub_best_model
+                    th.cuda.empty_cache()
+                    gc.collect()  
+
+# If in test mode, it skips training and directly loads pre-trained checkpoints for evaluation.
+        elif args.test:
+            print(f"Model Test Fold : {fold}")
+            for filename in os.listdir(args.save_model_fold_path):
+                if filename.startswith("checkpoint-1"):
+                    best_model_path = os.path.join(args.save_model_fold_path, filename)
+                    best_checkpoint = th.load(best_model_path)
+                    model.load_state_dict(best_checkpoint)
+                    best_model = model.to(args.device)
+
+                    if args.data == "asap":
+                        best_result, best_pred_dic, best_true_dic = asap_test(tokenizer, best_model, test_dataset, args)
+                    else:
+                        best_result, best_pred_dic, best_true_dic = feedback_test(tokenizer, best_model, test_dataset, args)
+                    best_model = best_model.cpu()
+        
+                    del best_model
+                    th.cuda.empty_cache()
+                    gc.collect()  
+        
+                elif filename.startswith("checkpoint-2"):
+                    sub_best_model_path = os.path.join(args.save_model_fold_path, filename)
+                    sub_best_checkpoint = th.load(sub_best_model_path)
+                    model.load_state_dict(sub_best_checkpoint)
+                    sub_best_model = model.to(args.device)
+                    if args.data == "asap":
+                        sub_best_result, sub_best_pred_dic, sub_best_true_dic = asap_test(tokenizer, sub_best_model, test_dataset, args)
+                    else:
+                        sub_best_result, sub_best_pred_dic, sub_best_true_dic = feedback_test(tokenizer, sub_best_model, test_dataset, args)
+                    
+                    sub_best_model = sub_best_model.cpu()
+                    
+                    del sub_best_model
+                    th.cuda.empty_cache()
+                    gc.collect() 
+
+# Saves the best and sub-best results for this fold.
+        best_fold_result_dict[fold] = best_result
+        best_fold_pred_dict[fold] = best_pred_dic
+        best_fold_true_dict[fold] = best_true_dic
+        
+        
+        sub_best_fold_result_dict[fold] = sub_best_result
+        sub_best_fold_pred_dict[fold] = sub_best_pred_dic
+        sub_best_fold_true_dict[fold] = sub_best_true_dic
+        
+        with open(f"./{args.result_path}/best_result_dict.pkl", "wb") as f:
+            pickle.dump(best_fold_result_dict, f)
+        with open(f"./{args.result_path}/best_pred_dict.pkl", "wb") as f:
+            pickle.dump(best_fold_pred_dict, f)
+        with open(f"./{args.result_path}/best_true_dict.pkl", "wb") as f:
+            pickle.dump(best_fold_true_dict, f)
+        with open(f"./{args.result_path}/sub_best_result_dict.pkl", "wb") as f:
+            pickle.dump(sub_best_fold_result_dict, f)
+        with open(f"./{args.result_path}/sub_best_pred_dict.pkl", "wb") as f:
+            pickle.dump(sub_best_fold_pred_dict, f)
+        with open(f"./{args.result_path}/sub_best_true_dict.pkl", "wb") as f:
+            pickle.dump(sub_best_fold_true_dict, f)
+        
+# Returns dictionaries containing predictions and ground truths for analysis.     
+    return best_fold_result_dict, best_fold_pred_dict, best_fold_true_dict, \
+        sub_best_fold_result_dict, sub_best_fold_pred_dict, sub_best_fold_true_dict
+        
         
 
 

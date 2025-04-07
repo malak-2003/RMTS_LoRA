@@ -115,7 +115,8 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
 
     if args.data == "asap":
-        eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
+        # eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
+        eval_steps= 500
         
     else:
         eval_steps = 1600
@@ -168,6 +169,200 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     
     return model
 
+
+
+from torch.nn import functional as F
+def asap_test(tokenizer, model, test_data, args):
+
+#Input Parameters
+#tokenizer – Tokenizer object for converting input text into token IDs.
+#model – Fine-tuned transformer model (T5, BART, Pegasus, or LED).
+#test_data – Test dataset containing essay inputs and ground-truth scores.
+#args – Configuration parameters (e.g., device type, model name).
+
+#Output
+#qwk_result – Dictionary storing QWK scores for each trait of each essay prompt.
+#pred_dic – Dictionary storing predicted trait scores for each prompt.
+#true_dic – Dictionary storing ground-truth trait scores.
+    print("utils:asap_test")
+#    These dictionaries will store predictions (pred_dic), actual scores (true_dic), and QWK results (qwk_result) for each essay prompt.
+    pred_dic = dict()
+    true_dic = dict()
+    qwk_result = dict()
+#    Each prompt (1-8) has specific writing traits to be evaluated.
+    trait_map = {
+    1: ["overall", "content", "organization", "word choice", "sentence fluency", "conventions"],
+    2: ["overall", "content", "organization", "word choice", "sentence fluency", "conventions"],
+    3: ["overall", "content", "prompt adherence", "language", "narrativity"],
+    4: ["overall", "content", "prompt adherence", "language", "narrativity"],
+    5: ["overall", "content", "prompt adherence", "language", "narrativity"],
+    6: ["overall", "content", "prompt adherence", "language", "narrativity"],
+    7: ["overall", "content", "organization", "style", "conventions"],
+    8: ["overall", "content", "organization", "voice", "word choice", "sentence fluency", "conventions"]
+    }
+#    Handles compound trait names by replacing spaces with hyphens
+    compound_keys = {
+    'sentence fluency': 'sentence-fluency',
+    'word choice': 'word-choice',
+    'prompt adherence': 'prompt-adherence'
+    }
+#    Initializes dictionaries to store predictions, true labels, and QWK scores for each trait in each prompt.
+    for p in range(1,9):
+        print("Initializes dictionaries to store predictions")
+        pred_dic[p] = dict()
+        true_dic[p] = dict()
+        qwk_result[p] = dict()
+        trait_list = trait_map[p]
+        for trait in trait_list:
+            pred_dic[p][trait] = list()
+            true_dic[p][trait] = list()
+            qwk_result[p][trait] = 0.0
+
+# The model is set to evaluation mode
+    model.eval()
+#   Uses torch.no_grad() to disable gradient computation (since we're testing).Loops through the test dataset in batches of 128 essays.
+    batch_size = 128
+    with th.no_grad():
+        for i in tqdm(range(0, len(test_data), batch_size)):
+            test = test_data[i:i+batch_size]
+#        Loads the tokenized essays (input_ids_all) and attention masks.
+            input_ids_all  = th.tensor(test['input_ids']).to(args.device)
+            attention_mask =  th.tensor(test['attention_mask']).to(args.device)
+#        Extracts the first 512 tokens of each essay (max input length for some models).
+            essay_input_ids = input_ids_all[:,:512]
+            essay_attention_mask = th.ones(essay_input_ids.size(), dtype=th.long).to(model.device)
+
+#        Calls the encoder of the chosen model to process the essay.
+            print("Calls encoder")
+            if 'bart' in args.model_name:
+                encoder_outputs = model.model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
+            elif 't5' in args.model_name:
+                encoder_outputs = model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
+            elif 'pegasus' in args.model_name:
+                encoder_outputs = model.model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
+            elif 'led' in args.model_name:
+                encoder_outputs = model.led.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
+            
+            
+            
+
+#         Extracts trait-related information (criteria) from the input.
+            criteria_ids = input_ids_all[:,512:]
+            criteria_attention_mask = th.ones(criteria_ids.size(), dtype=th.long).to(model.device)
+            
+
+            if 'bart' in args.model_name:
+                criteria_encoder_outputs = model.model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+                encoder_outputs.last_hidden_state = model.model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
+                                
+            elif 't5' in args.model_name:
+#           Similar to essays, criteria are encoded using the model's encoder.
+                criteria_encoder_outputs = model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+#           Combines essay encoding and criteria encoding
+                encoder_outputs.last_hidden_state = model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1)
+                
+            elif 'pegasus' in args.model_name:
+                criteria_encoder_outputs = model.model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+                encoder_outputs.last_hidden_state = model.model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
+                
+            elif 'led' in args.model_name:
+                criteria_encoder_outputs = model.led.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
+                encoder_outputs.last_hidden_state = model.led.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
+          
+          
+
+            labels = test['t5_output']
+            prompts = test["essay_set"]
+
+#   The decoder start token is used as input.The model generates predictions (trait scores) based on the essay.
+            decoder_start_token_id = model.config.decoder_start_token_id
+            
+            input_ids = th.tensor([[decoder_start_token_id] for _ in range(encoder_outputs[0].size(0))]).to(args.device)
+
+            
+            if "t5" in args.model_name:
+                outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 64, num_beams =1)
+            else:
+                outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 256, num_beams =1)
+            
+            
+
+            for i, (output, true) in enumerate(zip(outputs, labels)):
+#            Converts tokenized output back to readable text.
+                pred = tokenizer.decode(output, skip_special_tokens=True)
+                
+                
+                
+                try:
+#                Parses the predicted scores into a dictionary.
+                    pred_text = pred
+                    for key, replacement in compound_keys.items():
+                        pred_text = pred_text.replace(key, replacement)
+                    items = pred_text.split(', ')                    
+
+                    pred_result = {}
+                    
+                    for item in items:
+                        key, value = item.split(' ', 1)
+                        key = key.replace('-', ' ') 
+                        if value == 'nan':
+                            value = np.nan
+                        else:
+                            value = int(value)
+                        pred_result[key] = value
+                    
+                    
+                    true_text = true
+                    for key, replacement in compound_keys.items():
+                        true_text = true_text.replace(key, replacement)
+                    items = true_text.split(', ')
+                    true_result = {}
+                    for item in items:
+                        key, value = item.split(' ', 1)
+                        key = key.replace('-', ' ')  
+                        if value == 'nan':
+                            value = np.nan
+                        else:
+                            value = int(value)
+                            true_result[key] = value
+
+                    prompt = prompts[i]
+                
+                    trait_list = trait_map[prompt]
+#               Stores the predictions and true scores for each trait.
+                    for trait in trait_list:
+                        if np.isnan(pred_result[trait]):
+                            pred_dic[prompt][trait].append(0)
+                            true_dic[prompt][trait].append(true_result[trait])
+                            continue
+                        pred_dic[prompt][trait].append(pred_result[trait])
+                        true_dic[prompt][trait].append(true_result[trait])
+                    
+                except Exception as e:
+                    
+                    print(f"An error occurred: {e}")
+                    traceback.print_exc() 
+
+                    # continue
+                    break
+
+                    
+#   Computes Quadratic Weighted Kappa (QWK), which measures agreement between predictions and actual scores.
+        for prompt in range(1,9):
+            trait_list = trait_map[prompt]
+            
+            for trait in trait_list:
+                qwk_result[prompt][trait] = quadratic_weighted_kappa(np.array(pred_dic[prompt][trait]), np.array(true_dic[prompt][trait]))
+                                           
+        log = "Test Result"
+        for prompt in range(1,9):
+            log += f"\n\n| Prompt: {prompt} |"
+            log += f"\n| {qwk_result[prompt]} |"
+        print(log)
+
+        
+
+    return qwk_result, pred_dic, true_dic
 
 
 
