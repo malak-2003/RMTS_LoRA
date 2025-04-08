@@ -486,8 +486,9 @@ def asap_test(tokenizer, model, test_data, args):
                 
                     trait_list = trait_map[prompt]
 #               Stores the predictions and true scores for each trait.
+                    print(f"🆘🆘 Pred_result : {pred_result}")
+                    print(f"✅✅ True_result : {true_result}")
                     for trait in trait_list:
-                        print(f"🆘🆘🆘 pred_result length: {len(pred_result)}")
                         if trait not in pred_result:
                             print(f"⚠️ Trait '{trait}' not found in prediction for prompt {prompt}")
                             
@@ -854,6 +855,18 @@ def feedback_test(tokenizer, model, test_data, args):
         
 
     return qwk_result, pred_dic, true_dic
+
+import re
+
+def extract_traits(text):
+    print("utils:extract_traits")
+    matches = re.findall(r'(\w+)\s+([\d.]+)', text)
+    
+    
+    traits_dict = {trait: float(value.rstrip('.')) for trait, value in matches[:7]} 
+    return traits_dict
+
+
 
 
 
