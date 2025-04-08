@@ -292,8 +292,8 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
 
     if args.data == "asap":
-        # eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
-        eval_steps= 500
+        eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
+        # eval_steps= 500
         
     else:
         eval_steps = 1600
