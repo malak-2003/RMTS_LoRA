@@ -267,7 +267,7 @@ if __name__ == "__main__":
         parser.add_argument('--seed', '-s', type=int, default=40, help='random seed')
         parser.add_argument('--patience', '-p', type=int, default=10, help='number of patience for early stopping')
         parser.add_argument("--train_epochs", type=int, default=15)
-        parser.add_argument("--save_checkpoint_path", type=str, default=None) # !! not used 
+        parser.add_argument("--save_checkpoint_path", type=str, default=None) 
         parser.add_argument("--test", type=bool, default=False)
         parser.add_argument("--num_beams", type=int, default=1)
         parser.add_argument("--data", type=str, default=f"asap")
