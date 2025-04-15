@@ -11,7 +11,7 @@ from tqdm import tqdm
 from evaluation import quadratic_weighted_kappa
 import warnings
 import traceback
-from peft import get_peft_model, LoraConfig
+from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 
 warnings.filterwarnings("ignore")
 
@@ -79,6 +79,24 @@ def preprocess_data(examples, tokenizer,args):
     
     return essay
 
+
+def print_trainable_parameters(model):
+    """
+    Prints the number of trainable parameters in the model.
+    Useful when using PEFT methods like LoRA to confirm only adapter layers are trainable.
+    """
+    trainable = 0
+    total = 0
+    for name, param in model.named_parameters():
+        num_params = param.numel()
+        total += num_params
+        if param.requires_grad:
+            trainable += num_params
+    print(f"🔧 Trainable parameters: {trainable:,}")
+    print(f"📦 Total parameters: {total:,}")
+    print(f"✅ Percentage trainable: {100 * trainable / total:.4f}%")
+
+
 # Tested 🕵🏻✅
 def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
@@ -106,37 +124,24 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
     """
 
-# this loads the base model in 4-bit and handles GPU mapping.
-    bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=th.float16,
-)
-
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-    args.model_path,  # or wherever your base model is
-    quantization_config=bnb_config,
-    device_map="auto"
-)
 
     # LoRA configuration (add low-rank matrices to attention layers)
     lora_config = LoraConfig(
-    r=8,  # Rank of the low-rank decomposition
+    r=32,  # Rank of the low-rank decomposition
     lora_alpha=32,  # Scaling factor for LoRA
-    lora_dropout=0.1,  # Dropout rate for LoRA layers
+    lora_dropout=0.05,  # Dropout rate for LoRA layers
     task_type="SEQ_2_SEQ_LM"
     )
 
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
-
+    print_trainable_parameters(model)
 
 
 
     if args.data == "asap":
-        eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
-        # eval_steps= 500
+        # eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
+        eval_steps= 500
         
     else:
         eval_steps = 1600
@@ -152,8 +157,9 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     """
     # These are the settings that control the training behavior. 
     # fp16=True, for qlora
+    print("📁 Should save in drive")
     training_args = Seq2SeqTrainingArguments(
-                        output_dir=f"./{args.result_path}",           
+                        output_dir="/content/drive/MyDrive/QLoRA_Checkpoints",           
                         evaluation_strategy="steps",      
                         eval_steps=eval_steps,                
                         per_device_train_batch_size=args.train_batch_size,    

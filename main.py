@@ -3,10 +3,11 @@ import argparse
 import torch as th
 from utils import *
 from models.customized_modeling_t5 import CustomizedT5ForConditionalGeneration
-from transformers import T5Tokenizer
+from transformers import T5Tokenizer,  BitsAndBytesConfig, AutoModelForSeq2SeqLM
 import gc
 import pickle
 import warnings
+from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 
 
 
@@ -28,7 +29,8 @@ def main(args):
     """
     print("🦾 THE BIG BOSS")
     set_seed(args)
-
+    """
+    Local Save
     # 🕵🏻✅ Malak: Creates ckpts_asap folder with model name folder inside if not created 
     if not os.path.isdir(f"ckpts_{args.result_path}"):
         os.makedirs(f"ckpts_{args.result_path}")
@@ -42,6 +44,31 @@ def main(args):
     if args.test:
         args.load_checkpoint_path = f"ckpts_{args.result_path}"
         print(f"In Test Mode: { args.load_checkpoint_path}")
+    """
+
+
+    # 🕵🏻🆘 Set base directory to your Google Drive path
+    drive_base_dir = "/content/drive/MyDrive"  # Change this if you're using a different path
+
+    # 🕵🏻🆘 Full path for saving checkpoints
+    checkpoint_dir = os.path.join(drive_base_dir, f"ckpts_{args.result_path}")
+    
+
+    # 🕵🏻🆘 Create directory if it doesn't exist
+    if not os.path.isdir(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
+        print(f"🗂️ New folder created on Drive: {checkpoint_dir}")
+
+    # 🕵🏻🆘 Save path for training
+    args.save_model_path = checkpoint_dir
+
+    # 🕵🏻🆘 Update load path if in test mode
+    if args.test:
+        args.load_checkpoint_path = checkpoint_dir
+        print(f"🧪 In Test Mode — Loading from: {args.load_checkpoint_path}")
+
+
+
 
     
     # 🕵🏻✅ Malak: It always assigns gpu i tried -1/1/0
@@ -79,29 +106,8 @@ def main(args):
 
     for fold in range(5):
         print(f"🚀 Begining of Fold Number:{fold}")
-
-        """
-            #Define quantization config for QLoRA
-        bnb_config = BitsAndBytesConfig(
-          load_in_4bit=True,
-          bnb_4bit_compute_dtype=th.float16,  # or torch.bfloat16 if supported
-          bnb_4bit_use_double_quant=True,
-          bnb_4bit_quant_type="nf4"
-        )
-
-        #Load base model in 4-bit
-        model = CustomizedT5ForConditionalGeneration.from_pretrained(
-          args.model_name,
-          quantization_config=bnb_config,
-         
-        )
-
-        #Prepare model for k-bit training (adds layernorm casting, input gradient tracking)
-        model = prepare_model_for_kbit_training(model)
-                
-
-        """
         model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
+        
         model.use_rationale = True
 
         model.resize_token_embeddings(len(tokenizer))
