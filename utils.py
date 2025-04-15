@@ -5,7 +5,7 @@ import random
 import pandas as pd
 import numpy as np
 from datasets import Dataset
-from transformers import TrainerCallback, Seq2SeqTrainer, Seq2SeqTrainingArguments, EarlyStoppingCallback
+from transformers import TrainerCallback, Seq2SeqTrainer, Seq2SeqTrainingArguments, EarlyStoppingCallback, BitsAndBytesConfig, AutoModelForSeq2SeqLM
 import torch as th
 from tqdm import tqdm
 from evaluation import quadratic_weighted_kappa
@@ -97,14 +97,6 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     """
     🛠️ Fine-Tuning Part of the Code 
 
-    # LoRA configuration (add low-rank matrices to attention layers)
-    lora_config = LoraConfig(
-    r=8,  # Rank of the low-rank decomposition
-    lora_alpha=32,  # Scaling factor for LoRA
-    lora_dropout=0.1,  # Dropout rate for LoRA layers
-    task_type="SEQ_2_SEQ_LM"
-    )
-
     # Apply LoRA to the model -- Way 1 (ChatGPT) 
     model = get_peft_model(model, lora_config)
 
@@ -113,6 +105,33 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     peft_config=lora_config,  -- put line inside trainer
 
     """
+
+# this loads the base model in 4-bit and handles GPU mapping.
+    bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=th.float16,
+)
+
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+    args.model_path,  # or wherever your base model is
+    quantization_config=bnb_config,
+    device_map="auto"
+)
+
+    # LoRA configuration (add low-rank matrices to attention layers)
+    lora_config = LoraConfig(
+    r=8,  # Rank of the low-rank decomposition
+    lora_alpha=32,  # Scaling factor for LoRA
+    lora_dropout=0.1,  # Dropout rate for LoRA layers
+    task_type="SEQ_2_SEQ_LM"
+    )
+
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
+
+
 
 
     if args.data == "asap":
@@ -132,6 +151,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
         logging_dir='./logs',  # Optional, for TensorBoard
     """
     # These are the settings that control the training behavior. 
+    # fp16=True, for qlora
     training_args = Seq2SeqTrainingArguments(
                         output_dir=f"./{args.result_path}",           
                         evaluation_strategy="steps",      
@@ -148,6 +168,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                         save_safetensors = False,
                         learning_rate=args.learning_rate,  
                         logging_steps=100,
+                        fp16=True, 
                                      
                     )
     
@@ -234,7 +255,7 @@ def asap_test(tokenizer, model, test_data, args):
             essay_attention_mask = th.ones(essay_input_ids.size(), dtype=th.long).to(model.device)
 
 #        Calls the encoder of the chosen model to process the essay.
-            print("🟡 Calls Encoder 🟡")
+            # print("🟡 Calls Encoder 🟡")
             encoder_outputs = model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
 
                        
@@ -261,13 +282,12 @@ def asap_test(tokenizer, model, test_data, args):
             # hena kan fe if else w el eslse other model max_new_token was 256 -- make sure of number 
             outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 64, num_beams =1)
             
-            
+            flag= True
 
             for i, (output, true) in enumerate(zip(outputs, labels)):
                 # Converts tokenized output back to readable text.
                 pred = tokenizer.decode(output, skip_special_tokens=True)
-                print(f"🔴🟠🟡🟢🔵🟣Output of model: {pred}")
-                
+
                 
                 
                 try:
@@ -291,6 +311,7 @@ def asap_test(tokenizer, model, test_data, args):
                             value = int(value)
                         pred_result[key] = value
                     
+
                     
                     true_text = true
                     for key, replacement in compound_keys.items():
@@ -310,8 +331,10 @@ def asap_test(tokenizer, model, test_data, args):
                 
                     trait_list = trait_map[prompt]
 #               Stores the predictions and true scores for each trait.
-                    print(f"🆘🆘 Pred_result : {pred_result}")
-                    print(f"✅✅ True_result : {true_result}")
+                    if flag:
+                        print(f"🆘🆘 Pred_result : {pred_result}")
+                        print(f"✅✅ True_result : {true_result}")
+                        flag=False
                     for trait in trait_list:
                         if trait not in pred_result:
                             print(f"⚠️ Trait '{trait}' not found in prediction for prompt {prompt}")
