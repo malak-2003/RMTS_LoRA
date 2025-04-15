@@ -6,3 +6,6 @@ datasets
 numpy
 pandas
 accelerate
+bitsandbytes
+peft
+
