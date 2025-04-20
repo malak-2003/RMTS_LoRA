@@ -109,7 +109,7 @@ def main(args):
 # The function performs 5-fold cross-validation, training and evaluating a separate model for each fold.
 # 💡 From what I understand LoRA helps in datasets where data is not too much or not to little so try decreasing folds if results are not good
 
-    for fold in range(5):
+    for fold in range(1):
         print(f"🚀 Begining of Fold Number:{fold}")
         model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
         
