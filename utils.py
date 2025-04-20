@@ -127,9 +127,9 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
     # LoRA configuration (add low-rank matrices to attention layers)
     lora_config = LoraConfig(
-    r=32,  # Rank of the low-rank decomposition
-    lora_alpha=32,  # Scaling factor for LoRA
-    lora_dropout=0.05,  # Dropout rate for LoRA layers
+    r=64,  # Rank of the low-rank decomposition
+    lora_alpha=64,  # Scaling factor for LoRA
+    lora_dropout=0.1,  # Dropout rate for LoRA layers
     task_type="SEQ_2_SEQ_LM"
     )
 
@@ -157,9 +157,17 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     """
     # These are the settings that control the training behavior. 
     # fp16=True, for qlora
+    output_dir_path= ""
+
+    if args.online_run:
+        output_dir_path="/content/drive/MyDrive/QLoRA_Checkpoints"
+    else:
+        
+        output_dir_path=f"./{args.result_path}"
+    
     print("📁 Should save in drive")
     training_args = Seq2SeqTrainingArguments(
-                        output_dir="/content/drive/MyDrive/QLoRA_Checkpoints",           
+                        output_dir=output_dir_path,           
                         evaluation_strategy="steps",      
                         eval_steps=eval_steps,                
                         per_device_train_batch_size=args.train_batch_size,    
@@ -174,7 +182,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                         save_safetensors = False,
                         learning_rate=args.learning_rate,  
                         logging_steps=100,
-                        fp16=True, 
+                        
                                      
                     )
     

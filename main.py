@@ -23,51 +23,56 @@ def main(args):
     args.device: cpu -- what it does idk 
 
     Used Emojis 🙃:
-     ✅ 🆘 🕵🏻 📌 👀 🔄 🛠️ 😊 😮‍💨 🚶 📍 📶 💾 💡 🔧 🤔 📟 📃 🚀 🏋️‍♂️ 📤 🚨 🧠 🗂️ 🟡 🔵 🧮 🏗️
+     ✅ 🆘 🕵🏻 📌 👀 🔄 🛠️ 😊 😮‍💨 🚶 📍 📶 💾 💡 🔧 🤔 📟 📃 🚀 🏋️‍♂️ 📤 🚨 🧠 🗂️ 🟡 🔵 🧮 🏗️ 💻 🌐
 
     
     """
     print("🦾 THE BIG BOSS")
     set_seed(args)
-    """
-    Local Save
-    # 🕵🏻✅ Malak: Creates ckpts_asap folder with model name folder inside if not created 
-    if not os.path.isdir(f"ckpts_{args.result_path}"):
-        os.makedirs(f"ckpts_{args.result_path}")
-        print(f"🗂️ New folder created: ckpts_{args.result_path}")
 
-    # 🕵🏻✅ Malak: Creates new argument called save_model_path ckpts_asap/t5-base 
-    args.save_model_path = f"ckpts_{args.result_path}"
+    print(f'!!!!!!!!!!!{args.online_run}')
+
+    if args.online_run:
+        print("🌐 Online Run")
+         # Drive Save
+        # 🕵🏻🆘 Set base directory to your Google Drive path
+        drive_base_dir = "/content/drive/MyDrive"  # Change this if you're using a different path
+
+        # 🕵🏻🆘 Full path for saving checkpoints
+        checkpoint_dir = os.path.join(drive_base_dir, f"ckpts_{args.result_path}")
+        
+
+        # 🕵🏻🆘 Create directory if it doesn't exist
+        if not os.path.isdir(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+            print(f"🗂️ New folder created on Drive: {checkpoint_dir}")
+
+        # 🕵🏻🆘 Save path for training
+        args.save_model_path = checkpoint_dir
+
+        # 🕵🏻🆘 Update load path if in test mode
+        if args.test:
+            args.load_checkpoint_path = checkpoint_dir
+            print(f"🧪 In Test Mode — Loading from: {args.load_checkpoint_path}")
+
+    else :
+        print("💻 Offline Run")
+        
+         # 🕵🏻✅ Malak: Creates ckpts_asap folder with model name folder inside if not created 
+        if not os.path.isdir(f"ckpts_{args.result_path}"):
+            os.makedirs(f"ckpts_{args.result_path}")
+            print(f"🗂️ New folder created: ckpts_{args.result_path}")
+
+        # 🕵🏻✅ Malak: Creates new argument called save_model_path ckpts_asap/t5-base 
+        args.save_model_path = f"ckpts_{args.result_path}"
 
 
-    # 🕵🏻🆘 To be tested : if in test mode it modifies args.load_checkpoint_path to point to a checkpoint directory where model checkpoints are saved
-    if args.test:
-        args.load_checkpoint_path = f"ckpts_{args.result_path}"
-        print(f"In Test Mode: { args.load_checkpoint_path}")
-    """
-
-
-    # 🕵🏻🆘 Set base directory to your Google Drive path
-    drive_base_dir = "/content/drive/MyDrive"  # Change this if you're using a different path
-
-    # 🕵🏻🆘 Full path for saving checkpoints
-    checkpoint_dir = os.path.join(drive_base_dir, f"ckpts_{args.result_path}")
+        # 🕵🏻🆘 To be tested : if in test mode it modifies args.load_checkpoint_path to point to a checkpoint directory where model checkpoints are saved
+        if args.test:
+            args.load_checkpoint_path = f"ckpts_{args.result_path}"
+            print(f"In Test Mode: { args.load_checkpoint_path}")
     
-
-    # 🕵🏻🆘 Create directory if it doesn't exist
-    if not os.path.isdir(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
-        print(f"🗂️ New folder created on Drive: {checkpoint_dir}")
-
-    # 🕵🏻🆘 Save path for training
-    args.save_model_path = checkpoint_dir
-
-    # 🕵🏻🆘 Update load path if in test mode
-    if args.test:
-        args.load_checkpoint_path = checkpoint_dir
-        print(f"🧪 In Test Mode — Loading from: {args.load_checkpoint_path}")
-
-
+       
 
 
     
@@ -302,7 +307,7 @@ if __name__ == "__main__":
         parser.add_argument("--llm", type=str, default="gpt")
         parser.add_argument('--model_name', '-m', type=str, default='t5-base', help='name of the t5 model')
         parser.add_argument('--learning_rate', '-l', type=float, default=5e-05, help='learning rate')
-        
+        parser.add_argument("--online_run", type=bool, default=True) 
         args = parser.parse_args()    
         
         # Malak: Creates asap/feedback folder and model name folder inside it 
