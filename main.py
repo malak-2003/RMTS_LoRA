@@ -3,36 +3,25 @@ import argparse
 import torch as th
 from utils import *
 from models.customized_modeling_t5 import CustomizedT5ForConditionalGeneration
-from transformers import T5Tokenizer,  BitsAndBytesConfig, AutoModelForSeq2SeqLM
+from transformers import T5Tokenizer,  BitsAndBytesConfig, T5ForConditionalGeneration
 import gc
 import pickle
 import warnings
-from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
+
 
 
 
 warnings.filterwarnings("ignore")
 
 def main(args):
-    """
-    📝 General Notes:
 
-    Dynamic arguments 
-    args.result_path: asap/t5-base  -- saves results?
-    args.save_model_path: ckpts_asap/t5-base -- saves checkpoints?
-    args.device: cpu -- what it does idk 
-
-    Used Emojis 🙃:
-     ✅ 🆘 🕵🏻 📌 👀 🔄 🛠️ 😊 😮‍💨 🚶 📍 📶 💾 💡 🔧 🤔 📟 📃 🚀 🏋️‍♂️ 📤 🚨 🧠 🗂️ 🟡 🔵 🧮 🏗️ 💻 🌐
-
-    
-    """
     print("🦾 THE BIG BOSS")
     set_seed(args)
 
-    print(f'!!!!!!!!!!!{args.online_run}')
 
-    if args.online_run:
+    flag=False
+
+    if not flag:
         print("🌐 Online Run")
          # Drive Save
         # 🕵🏻🆘 Set base directory to your Google Drive path
@@ -71,8 +60,7 @@ def main(args):
         if args.test:
             args.load_checkpoint_path = f"ckpts_{args.result_path}"
             print(f"In Test Mode: { args.load_checkpoint_path}")
-    
-       
+ 
 
 
     
@@ -111,7 +99,21 @@ def main(args):
 
     for fold in range(1):
         print(f"🚀 Begining of Fold Number:{fold}")
-        model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
+        # model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
+
+        bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_quant_type="nf4",
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_compute_dtype=th.bfloat16
+    )
+    
+    # Reload the model with quantization config
+        model = T5ForConditionalGeneration.from_pretrained(
+        "t5-base",
+        quantization_config=bnb_config,  # THIS is where bnb_config gets used
+        device_map="auto"
+    )
         
         model.use_rationale = True
 

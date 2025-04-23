@@ -99,43 +99,29 @@ def print_trainable_parameters(model):
 
 # Tested 🕵🏻✅
 def train(model, tokenizer, train_dataset, dev_dataset, args=None):
-
-
-    """
-    📝 Train Method Notes 
-    
-    📶 Training Steps: During training, the model processes batches of data (training steps).
-
-    📶 Evaluation Steps: After every eval_steps training steps, the model is evaluated on a validation dataset, and metrics (e.g., loss, accuracy) are computed. 
-    This helps you monitor the model's performance during training.
-    Evaluations can be linked to checkpoints, meaning the model will be saved after each evaluation step.
-
-    """
-        
-    """
-    🛠️ Fine-Tuning Part of the Code 
-
-    # Apply LoRA to the model -- Way 1 (ChatGPT) 
-    model = get_peft_model(model, lora_config)
-
-    # Apply LoRA to the model -- Way 2 (Github)
-    # Link 🔗:(https://gitlab.com/CeADARIreland_Public/llm-resources/-/blob/main/fine_tuning_template_script.py?ref_type=heads) 
-    peft_config=lora_config,  -- put line inside trainer
-
-    """
-
-
-    # LoRA configuration (add low-rank matrices to attention layers)
-    lora_config = LoraConfig(
-    r=64,  # Rank of the low-rank decomposition
-    lora_alpha=64,  # Scaling factor for LoRA
-    lora_dropout=0.1,  # Dropout rate for LoRA layers
-    task_type="SEQ_2_SEQ_LM"
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,  # Enable 4-bit quantization
+        bnb_4bit_quant_type="nf4",  # Normal Float 4 quantization
+        bnb_4bit_use_double_quant=True,  # Nested quantization for better memory efficiency
+        bnb_4bit_compute_dtype=th.bfloat16  # Computation dtype
     )
+    
+    # Apply QLoRA to the model
+    model = prepare_model_for_kbit_training(model)
+    
 
+ # LoRA Configuration - Optimized for T5 architecture
+    lora_config = LoraConfig(
+        r=16,  # Slightly higher rank for generation tasks
+        lora_alpha=32,
+        target_modules=["q", "v", "wi", "wo"],  # T5-specific modules
+        lora_dropout=0.05,
+        bias="none",
+        task_type="SEQ_2_SEQ_LM"  # Specific for T5 sequence-to-sequence
+    )
+    
     model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
-    print_trainable_parameters(model)
+    model.print_trainable_parameters()  # Show which parameters are trainable
 
 
 
@@ -155,15 +141,13 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     logging_steps -- controls how often training logs are printed — like loss, learning rate, etc.
         logging_dir='./logs',  # Optional, for TensorBoard
     """
-    # These are the settings that control the training behavior. 
-    # fp16=True, for qlora
-    output_dir_path= ""
 
-    if args.online_run:
-        output_dir_path="/content/drive/MyDrive/QLoRA_Checkpoints"
-    else:
+    # output_dir_path= ""
+    # if args.online_run:
+    #     output_dir_path="/content/drive/MyDrive/QLoRA_Checkpoints"
+    # else:
         
-        output_dir_path=f"./{args.result_path}"
+    output_dir_path=f"./{args.result_path}"
     
     print("📁 Should save in drive")
     training_args = Seq2SeqTrainingArguments(
@@ -180,8 +164,13 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                         save_steps=eval_steps,                 
                         save_total_limit=15,         
                         save_safetensors = False,
-                        learning_rate=args.learning_rate,  
+                        learning_rate=2e-4,  
                         logging_steps=100,
+                        fp16=True,
+                        optim="paged_adamw_8bit",         # 8-bit AdamW optimizer
+                        gradient_accumulation_steps=4,     # MANUAL: Accumulate gradients (adjust based on GPU memory)
+                        warmup_steps=100,
+                        label_smoothing_factor=0.1
                         
                                      
                     )
@@ -220,7 +209,7 @@ def asap_test(tokenizer, model, test_data, args):
 #qwk_result – Dictionary storing QWK scores for each trait of each essay prompt.
 #pred_dic – Dictionary storing predicted trait scores for each prompt.
 #true_dic – Dictionary storing ground-truth trait scores.
-    print("Begining of ASAP test 🧠")
+    
 #    These dictionaries will store predictions (pred_dic), actual scores (true_dic), and QWK results (qwk_result) for each essay prompt.
     pred_dic = dict()
     true_dic = dict()
@@ -305,7 +294,7 @@ def asap_test(tokenizer, model, test_data, args):
                 
                 
                 try:
-                    print("Begining of ASAP test 🧠")
+                    
 
                     #Parses the predicted scores into a dictionary.
                     pred_text = pred
