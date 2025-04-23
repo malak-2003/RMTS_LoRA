@@ -11,7 +11,7 @@ from tqdm import tqdm
 from evaluation import quadratic_weighted_kappa
 import warnings
 import traceback
-from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
+from peft import get_peft_model, LoraConfig, TaskType
 
 warnings.filterwarnings("ignore")
 
@@ -123,17 +123,29 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     peft_config=lora_config,  -- put line inside trainer
 
     """
+   
 
 
-    # LoRA configuration (add low-rank matrices to attention layers)
     lora_config = LoraConfig(
-    r=64,  # Rank of the low-rank decomposition
-    lora_alpha=64,  # Scaling factor for LoRA
-    lora_dropout=0.1,  # Dropout rate for LoRA layers
-    task_type="SEQ_2_SEQ_LM"
+        r=64,
+        lora_alpha=32,
+        lora_dropout=0.1,
+      
+        task_type="SEQ_2_SEQ_LM"
     )
+    # you don't need to manually unfreeze LoRA layers — get_peft_model() does that for the modules listed in target_modules.
+
+
+
 
     model = get_peft_model(model, lora_config)
+    for name, param in model.named_parameters():
+        if 'encoder' in name:
+            param.requires_grad = False
+        elif 'decoder' in name:
+            param.requires_grad = True
+# LoRA adapters are automatically marked trainable by PEFT
+
     model.print_trainable_parameters()
     print_trainable_parameters(model)
 
@@ -182,6 +194,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                         save_safetensors = False,
                         learning_rate=args.learning_rate,  
                         logging_steps=100,
+                        fp16=True,
                         
                                      
                     )
@@ -305,7 +318,7 @@ def asap_test(tokenizer, model, test_data, args):
                 
                 
                 try:
-                    print("Begining of ASAP test 🧠")
+                    
 
                     #Parses the predicted scores into a dictionary.
                     pred_text = pred
