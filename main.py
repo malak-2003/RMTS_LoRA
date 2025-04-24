@@ -4,37 +4,22 @@ import torch as th
 import torch.nn as nn
 from utils import *
 from models.customized_modeling_t5 import CustomizedT5ForConditionalGeneration
-from transformers import T5Tokenizer,  BitsAndBytesConfig, T5ForConditionalGeneration
+from transformers import T5Tokenizer,  T5ForConditionalGeneration, BitsAndBytesConfig
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import gc
 import pickle
 import warnings
-
+from transformers import T5ForConditionalGeneration
+import bitsandbytes as bnb
 
 
 
 warnings.filterwarnings("ignore")
 
-class PatchedLinearWithAdapter(nn.Module):
-    def __init__(self, original_linear, adapter_module):
-        super().__init__()
-        self.original = original_linear
-        self.adapter = adapter_module
-
-    def forward(self, x):
-        out = self.original(x)
-        out = self.adapter(out)
-        return out
-
-    @property
-    def weight(self):
-        return self.original.weight
-
-    @property
-    def bias(self):
-        return self.original.bias
-
 
 def main(args):
+
+    
 
     print("🦾 THE BIG BOSS")
     set_seed(args)
@@ -121,105 +106,23 @@ def main(args):
 
 
     for fold in range(1):
-        model = T5ForConditionalGeneration.from_pretrained(args.model_name)
-        print("Total trainable parameters before adapter layers :", count_parameters(model))
-
-        # Freeze all base model parameters first
-        for param in model.parameters():
-            param.requires_grad = False
-
-        # --- Add Adapters to ALL Layers ---
-        total_size = 0
-        bottleneck_size = 32  # hyperparameter
-
-        # For T5 Encoder blocks
-        for block_idx in range(len(model.encoder.block)):
-            block = model.encoder.block[block_idx]
-            
-            # 1. Self-Attention output adapter
-            orig_sa_out = block.layer[0].SelfAttention.o
-            adapter_sa = make_adapter(
-                in_dim=orig_sa_out.out_features,
-                bottleneck_dim=bottleneck_size,
-                out_dim=orig_sa_out.out_features
-            )
-            block.layer[0].SelfAttention.o = nn.Sequential(orig_sa_out, adapter_sa)
-            total_size += count_parameters(adapter_sa)
-            
-            # 2. FFN output adapter
-            orig_ffn = block.layer[1].DenseReluDense.wo
-            adapter_ffn = make_adapter(
-                in_dim=orig_ffn.out_features,
-                bottleneck_dim=bottleneck_size,
-                out_dim=orig_ffn.out_features
-            )
-            # block.layer[1].DenseReluDense.wo = nn.Sequential(orig_ffn, adapter_ffn)
-            block.layer[1].DenseReluDense.wo = PatchedLinearWithAdapter(orig_ffn, adapter_ffn)
-            total_size += count_parameters(adapter_ffn)
-
-        # For T5 Decoder blocks
-        for block_idx in range(len(model.decoder.block)):
-            block = model.decoder.block[block_idx]
-            
-            # 1. Self-Attention output adapter
-            orig_sa_out = block.layer[0].SelfAttention.o
-            adapter_sa = make_adapter(
-                in_dim=orig_sa_out.out_features,
-                bottleneck_dim=bottleneck_size,
-                out_dim=orig_sa_out.out_features
-            )
-            block.layer[0].SelfAttention.o = nn.Sequential(orig_sa_out, adapter_sa)
-            total_size += count_parameters(adapter_sa)
-            
-            # 2. Cross-Attention output adapter
-            orig_ca_out = block.layer[1].EncDecAttention.o
-            adapter_ca = make_adapter(
-                in_dim=orig_ca_out.out_features,
-                bottleneck_dim=bottleneck_size,
-                out_dim=orig_ca_out.out_features
-            )
-            block.layer[1].EncDecAttention.o = nn.Sequential(orig_ca_out, adapter_ca)
-            total_size += count_parameters(adapter_ca)
-            
-            # 3. FFN output adapter
-            orig_ffn = block.layer[2].DenseReluDense.wo
-            adapter_ffn = make_adapter(
-                in_dim=orig_ffn.out_features,
-                bottleneck_dim=bottleneck_size,
-                out_dim=orig_ffn.out_features
-            )
-            # block.layer[2].DenseReluDense.wo = nn.Sequential(orig_ffn, adapter_ffn)
-            block.layer[2].DenseReluDense.wo = PatchedLinearWithAdapter(orig_ffn, adapter_ffn)
-
-            total_size += count_parameters(adapter_ffn)
-
-        # --- Unfreeze Last N Layers --- 
-        num_unfrozen_layers = 2  # Tune this hyperparameter
-
-        # Unfreeze encoder last N layers
-        for block in model.encoder.block[-num_unfrozen_layers:]:
-            for param in block.parameters():
-                param.requires_grad = True
-
-        # Unfreeze decoder last N layers
-        for block in model.decoder.block[-num_unfrozen_layers:]:
-            for param in block.parameters():
-                param.requires_grad = True
-
-        print("Total adapter parameters added:", total_size)
-        print("Total trainable after adapter layers :", count_parameters(model))
-
         
-        # Verify which layers are trainable
-        # for name, param in model.named_parameters():
-        #     if param.requires_grad:
-        #         print(f"Trainable: {name}")
-
-       
-       
-        # print(model)
-       
+        # model = T5ForConditionalGeneration.from_pretrained(args.model_name)
         
+       
+
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=th.float16,
+            bnb_4bit_quant_type="nf4"
+        )
+        model = T5ForConditionalGeneration.from_pretrained(
+        args.model_name,  # should be a string like "t5-base"
+        device_map="auto",
+        quantization_config=bnb_config
+    )
+
         model.use_rationale = True
 
         model.resize_token_embeddings(len(tokenizer))
@@ -246,48 +149,12 @@ def main(args):
         train_data = read_data(TRAIN_DATA_PATH)
         dev_data = read_data(DEV_DATA_PATH)
         test_data = read_data(TEST_DATA_PATH)
-        """
-        🕵🏻✅ Malak: For testing reading of data : it reads data correctly + length of enteries are correct
-        # Print number of entries
-        print(f"\nTotal number of entries: {len(train_data)}")
 
-
-        # Print first entry with each column on a separate line
-        first_entry = train_data[0]
-        print("\nFirst entry:")
-        for col, val in first_entry.items():
-          print(f"{col}: {val}")
-        """
         train_dataset = train_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
         dev_dataset = dev_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
         test_dataset = test_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
 
 
-        """
-        🕵🏻✅ Malak: For testing processing of data : it reads processes data correctly 
-
-        #Checking the encoded entry 
-        print(tokenizer.decode(train_dataset["input_ids"][0]))
-        print(tokenizer.decode(train_dataset["labels"][0]))
-
-        
-        # Number of examples processed
-        print(len(train_dataset["input_ids"])) 
-        print(len(train_dataset["labels"])) 
-
-        📌 Summary of Function (preprocess_data)
- 
-        Tokenize Essay and Rationale: The essay and rationale (either GPT or Llama) are tokenized separately and then concatenated.
-
-        Tokenize Labels: The output labels (like scores) are tokenized based on the model type.
-
-        Combine Data: Both the essay input and rationale are merged into a single input sequence, and labels are prepared for the model.
-        x represents a batch of examples
-
-        
-        The batched= True argument means that preprocess_data will be applied to the data in batches, not one sample at a time, which is more efficient.
-
-        """
         if not args.test:
             print(f"🏋️‍♂️ Training Fold : {fold}")
             model = train(model, tokenizer, train_dataset, dev_dataset, args)
@@ -902,3 +769,120 @@ if __name__ == "__main__":
 #     # #     quantization_config=bnb_config,  # THIS is where bnb_config gets used
 #     # #     device_map="auto"
 #     #  )
+
+
+
+
+
+
+
+
+
+
+# model = T5ForConditionalGeneration.from_pretrained(args.model_name)
+#         print("Total trainable parameters before adapter layers :", count_parameters(model))
+
+#         # Freeze all base model parameters first
+#         for param in model.parameters():
+#             param.requires_grad = False
+
+#         # --- Add Adapters to ALL Layers ---
+#         total_size = 0
+#         bottleneck_size = 32  # hyperparameter
+
+#         # For T5 Encoder blocks
+#         for block_idx in range(len(model.encoder.block)):
+#             block = model.encoder.block[block_idx]
+            
+#             # 1. Self-Attention output adapter
+#             orig_sa_out = block.layer[0].SelfAttention.o
+#             adapter_sa = make_adapter(
+#                 in_dim=orig_sa_out.out_features,
+#                 bottleneck_dim=bottleneck_size,
+#                 out_dim=orig_sa_out.out_features
+#             )
+#             block.layer[0].SelfAttention.o = nn.Sequential(orig_sa_out, adapter_sa)
+#             total_size += count_parameters(adapter_sa)
+            
+#             # 2. FFN output adapter
+#             orig_ffn = block.layer[1].DenseReluDense.wo
+#             adapter_ffn = make_adapter(
+#                 in_dim=orig_ffn.out_features,
+#                 bottleneck_dim=bottleneck_size,
+#                 out_dim=orig_ffn.out_features
+#             )
+#             # block.layer[1].DenseReluDense.wo = nn.Sequential(orig_ffn, adapter_ffn)
+#             block.layer[1].DenseReluDense.wo = PatchedLinearWithAdapter(orig_ffn, adapter_ffn)
+#             total_size += count_parameters(adapter_ffn)
+
+#         # For T5 Decoder blocks
+#         for block_idx in range(len(model.decoder.block)):
+#             block = model.decoder.block[block_idx]
+            
+#             # 1. Self-Attention output adapter
+#             orig_sa_out = block.layer[0].SelfAttention.o
+#             adapter_sa = make_adapter(
+#                 in_dim=orig_sa_out.out_features,
+#                 bottleneck_dim=bottleneck_size,
+#                 out_dim=orig_sa_out.out_features
+#             )
+#             block.layer[0].SelfAttention.o = nn.Sequential(orig_sa_out, adapter_sa)
+#             total_size += count_parameters(adapter_sa)
+            
+#             # 2. Cross-Attention output adapter
+#             orig_ca_out = block.layer[1].EncDecAttention.o
+#             adapter_ca = make_adapter(
+#                 in_dim=orig_ca_out.out_features,
+#                 bottleneck_dim=bottleneck_size,
+#                 out_dim=orig_ca_out.out_features
+#             )
+#             block.layer[1].EncDecAttention.o = nn.Sequential(orig_ca_out, adapter_ca)
+#             total_size += count_parameters(adapter_ca)
+            
+#             # 3. FFN output adapter
+#             orig_ffn = block.layer[2].DenseReluDense.wo
+#             adapter_ffn = make_adapter(
+#                 in_dim=orig_ffn.out_features,
+#                 bottleneck_dim=bottleneck_size,
+#                 out_dim=orig_ffn.out_features
+#             )
+#             # block.layer[2].DenseReluDense.wo = nn.Sequential(orig_ffn, adapter_ffn)
+#             block.layer[2].DenseReluDense.wo = PatchedLinearWithAdapter(orig_ffn, adapter_ffn)
+
+#             total_size += count_parameters(adapter_ffn)
+
+#         # --- Unfreeze Last N Layers --- 
+#         num_unfrozen_layers = 2  # Tune this hyperparameter
+
+#         # Unfreeze encoder last N layers
+#         for block in model.encoder.block[-num_unfrozen_layers:]:
+#             for param in block.parameters():
+#                 param.requires_grad = True
+
+#         # Unfreeze decoder last N layers
+#         for block in model.decoder.block[-num_unfrozen_layers:]:
+#             for param in block.parameters():
+#                 param.requires_grad = True
+
+#         print("Total adapter parameters added:", total_size)
+#         print("Total trainable after adapter layers :", count_parameters(model))
+
+
+# class PatchedLinearWithAdapter(nn.Module):
+#     def __init__(self, original_linear, adapter_module):
+#         super().__init__()
+#         self.original = original_linear
+#         self.adapter = adapter_module
+
+#     def forward(self, x):
+#         out = self.original(x)
+#         out = self.adapter(out)
+#         return out
+
+#     @property
+#     def weight(self):
+#         return self.original.weight
+
+#     @property
+#     def bias(self):
+#         return self.original.bias

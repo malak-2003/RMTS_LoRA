@@ -22,26 +22,18 @@ from torchmetrics.text import BLEUScore, ROUGEScore
 
 warnings.filterwarnings("ignore")
 
-def make_adapter(in_dim, bottleneck_dim, out_dim):
-    adapter_layers = th.nn.Sequential(
-        th.nn.Linear(in_dim, bottleneck_dim),
-        th.nn.GELU(),
-        th.nn.Linear(bottleneck_dim, out_dim),
-    )
-    return adapter_layers
+# def make_adapter(in_dim, bottleneck_dim, out_dim):
+#     adapter_layers = th.nn.Sequential(
+#         th.nn.Linear(in_dim, bottleneck_dim),
+#         th.nn.GELU(),
+#         th.nn.Linear(bottleneck_dim, out_dim),
+#     )
+#     return adapter_layers
 
-def count_parameters(module):
-    return sum(p.numel() for p in module.parameters() if p.requires_grad)
+# def count_parameters(module):
+#     return sum(p.numel() for p in module.parameters() if p.requires_grad)
 
 
-# def count_decoder_head_params(model):
-#     decoder_head = model.lm_head
-#     return sum(p.numel() for p in decoder_head.parameters())
-
-# # Count parameters in the last decoder block
-# def count_last_decoder_params(model):
-#     last_decoder_layer = model.decoder.block[-1]
-#     return sum(p.numel() for p in last_decoder_layer.parameters())
 
 # NOT Tested 🕵🏻🆘
 def set_seed(args):
@@ -128,7 +120,20 @@ def print_trainable_parameters(model):
 # Tested 🕵🏻✅
 def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
+    model = prepare_model_for_kbit_training(model)
 
+    # Define LoRA config
+    lora_config = LoraConfig(
+        r=8,
+        lora_alpha=32,
+        target_modules = ["q", "k", "v", "o"],
+        lora_dropout=0.1,
+        bias="none",
+        task_type="SEQ_2_SEQ_LM"  # Important for T5
+    )
+
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
 
 
@@ -145,7 +150,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
     output_dir_path=f"./{args.result_path}"
     
-    print("📁 Should save in drive")
+   
     training_args = Seq2SeqTrainingArguments(
                         output_dir=output_dir_path,           
                         eval_strategy="steps",      
@@ -160,7 +165,8 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                         save_steps=eval_steps,                 
                         save_total_limit=15,         
                         save_safetensors = False,
-                        learning_rate=args.learning_rate,  
+                        learning_rate=args.learning_rate, 
+                        fp16=True, 
                                      
                     )
     
@@ -374,140 +380,7 @@ def asap_test(tokenizer, model, test_data, args):
     return qwk_result, pred_dic, true_dic
 
 
-def feedback_test(tokenizer, model, test_data, args):
 
-    pred_dic = dict()
-    true_dic = dict()
-    qwk_result = dict()
-    trait_list = ["conventions", "grammar", "phraseology", "vocabulary", "syntax", "cohesion"]
-
-   
-    for trait in trait_list:
-        pred_dic[trait] = list()
-        true_dic[trait] = list()
-        qwk_result[trait] = 0.0
-
-
-    model.eval()
-    batch_size = 128
-    with th.no_grad():
-        for i in tqdm(range(0, len(test_data), batch_size)):
-            test = test_data[i:i+batch_size]
-            input_ids_all  = th.tensor(test['input_ids']).to(args.device)
-            attention_mask =  th.tensor(test['attention_mask']).to(args.device)
-
-            essay_input_ids = input_ids_all[:,:512]
-            essay_attention_mask = th.ones(essay_input_ids.size(), dtype=th.long).to(model.device)
-
-            
-            if 'bart' in args.model_name:
-                encoder_outputs = model.model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
-            elif 't5' in args.model_name:
-                encoder_outputs = model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
-            elif 'pegasus' in args.model_name:
-                encoder_outputs = model.model.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
-            elif 'led' in args.model_name:
-                encoder_outputs = model.led.encoder(input_ids=essay_input_ids,attention_mask=essay_attention_mask)
-            
-           
-            criteria_ids = input_ids_all[:,512:]
-            criteria_attention_mask = th.ones(criteria_ids.size(), dtype=th.long).to(model.device)
-            if 'bart' in args.model_name:
-                criteria_encoder_outputs = model.model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
-                encoder_outputs.last_hidden_state = model.model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
-                
-            elif 't5' in args.model_name:
-                criteria_encoder_outputs = model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
-                encoder_outputs.last_hidden_state = model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
-                
-                
-            elif 'pegasus' in args.model_name:
-                criteria_encoder_outputs = model.model.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
-                encoder_outputs.last_hidden_state = model.model.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
-                
-            elif 'led' in args.model_name:
-                criteria_encoder_outputs = model.led.encoder(input_ids=criteria_ids,attention_mask=criteria_attention_mask)
-                encoder_outputs.last_hidden_state = model.led.proj(th.concat([encoder_outputs[0],criteria_encoder_outputs[0]],dim=1).permute(0,2,1)).permute(0,2,1) 
-                    
-                
-            labels = test['t5_output']
-
-            
-            decoder_start_token_id = model.config.decoder_start_token_id
-            
-            input_ids = th.tensor([[decoder_start_token_id] for _ in range(encoder_outputs[0].size(0))]).to(args.device)
-
-            
-            if "flan-t5-base" in args.model_name:
-                outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 256, num_beams =1)
-            else:
-                outputs = model.generate(input_ids=input_ids,encoder_outputs=encoder_outputs,max_new_tokens = 64, num_beams =1)
-
-            
-
-            for i, (output, true) in enumerate(zip(outputs, labels)):
-                pred = tokenizer.decode(output, skip_special_tokens=True)
-                
-                try:
-                    pred = pred.replace(" ,", ",").replace(". ", ", ").replace(".,", ",").replace("  "," ").replace(" ;",",").replace(" :", ",").replace("and", ",").strip()
-                    pred = pred.replace("1.0", " 1.0").replace("1.5", " 1.5").replace("2.0", " 2.0").replace("2.5", " 2.5").replace("3.0", " 3.0").replace(
-                        "3.5", " 3.5").replace("4.0", " 4.0").replace("4.5", " 4.5").replace("5.0", " 5.0")
-
-                    if args.model_name == "bart":
-                        pred_result = extract_traits(pred)
-                    else:
-                        preds = pred.split(",")
-                        pred_result = dict()
-                        for p in preds:
-                            p = p.strip()
-                            key, value = p.split(' ', 1)
-                            pred_result[key] = float(value)
-                    
-                    true_result = "{" + re.sub(r'(\w+)\s([\d\.]+)', r'"\1": \2', true) + "}"
-                    true_result = eval(true_result)
-
-
-                    for trait in trait_list:
-                        
-                        pred_dic[trait].append(pred_result[trait])
-                        true_dic[trait].append(true_result[trait])
-                    
-                except Exception as e:
-                    
-                    print(f"An error occurred: {e}")
-
-                    # continue
-                    break
-        for trait in trait_list:
-            try:
-                qwk_result[trait] = quadratic_weighted_kappa(np.array(pred_dic[trait]), np.array(true_dic[trait]))
-            except Exception as e:
-                print(f"An error occurred: {e} for BART")
-                traceback.print_exc() 
-                qwk_result[trait] = 0.0
-                                           
-        log = "Test Result"
-        log += f"\n| {qwk_result} |"
-        print(log)
-
-        
-
-    return qwk_result, pred_dic, true_dic
-
-
-
-
-
-
-"""
-This SaveTopModelsCallback class is a custom callback for Hugging Face's Trainer that automatically:
-
-1- Tracks the top-k best models during training (based on lowest validation loss)
-
-2- Saves them to disk (as .pt files)
-
-
-"""
 
 # 🔧 Functionality: Makes a deep copy of the model's weights and biases using .clone() to avoid modifying original weights by accident.
 # 🤔 Why? When saving the top-k models, we don't want to accidentally overwrite or corrupt the original model's parameters later.
