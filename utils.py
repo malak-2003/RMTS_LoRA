@@ -12,8 +12,35 @@ from evaluation import quadratic_weighted_kappa
 import warnings
 import traceback
 from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
+import lightning as L
+import torchmetrics
+from torchmetrics.text import BLEUScore, ROUGEScore
+
+
+
 
 warnings.filterwarnings("ignore")
+
+def make_adapter(in_dim, bottleneck_dim, out_dim):
+    adapter_layers = th.nn.Sequential(
+        th.nn.Linear(in_dim, bottleneck_dim),
+        th.nn.GELU(),
+        th.nn.Linear(bottleneck_dim, out_dim),
+    )
+    return adapter_layers
+
+def count_parameters(module):
+    return sum(p.numel() for p in module.parameters() if p.requires_grad)
+
+
+# def count_decoder_head_params(model):
+#     decoder_head = model.lm_head
+#     return sum(p.numel() for p in decoder_head.parameters())
+
+# # Count parameters in the last decoder block
+# def count_last_decoder_params(model):
+#     last_decoder_layer = model.decoder.block[-1]
+#     return sum(p.numel() for p in last_decoder_layer.parameters())
 
 # NOT Tested 🕵🏻🆘
 def set_seed(args):
@@ -99,29 +126,8 @@ def print_trainable_parameters(model):
 
 # Tested 🕵🏻✅
 def train(model, tokenizer, train_dataset, dev_dataset, args=None):
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,  # Enable 4-bit quantization
-        bnb_4bit_quant_type="nf4",  # Normal Float 4 quantization
-        bnb_4bit_use_double_quant=True,  # Nested quantization for better memory efficiency
-        bnb_4bit_compute_dtype=th.bfloat16  # Computation dtype
-    )
-    
-    # Apply QLoRA to the model
-    model = prepare_model_for_kbit_training(model)
-    
 
- # LoRA Configuration - Optimized for T5 architecture
-    lora_config = LoraConfig(
-        r=16,  # Slightly higher rank for generation tasks
-        lora_alpha=32,
-        target_modules=["q", "v", "wi", "wo"],  # T5-specific modules
-        lora_dropout=0.05,
-        bias="none",
-        task_type="SEQ_2_SEQ_LM"  # Specific for T5 sequence-to-sequence
-    )
-    
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()  # Show which parameters are trainable
+
 
 
 
@@ -135,24 +141,13 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     print("🚶 Size of eval_steps: ", eval_steps)
     print(f"📍 Result path:{args.result_path}")
 
-    """
-    📝 Notes on arguments: 
-    save_total_limit -- means only the 15 most recent checkpoints will be kept on disk
-    logging_steps -- controls how often training logs are printed — like loss, learning rate, etc.
-        logging_dir='./logs',  # Optional, for TensorBoard
-    """
 
-    # output_dir_path= ""
-    # if args.online_run:
-    #     output_dir_path="/content/drive/MyDrive/QLoRA_Checkpoints"
-    # else:
-        
     output_dir_path=f"./{args.result_path}"
     
     print("📁 Should save in drive")
     training_args = Seq2SeqTrainingArguments(
                         output_dir=output_dir_path,           
-                        evaluation_strategy="steps",      
+                        eval_strategy="steps",      
                         eval_steps=eval_steps,                
                         per_device_train_batch_size=args.train_batch_size,    
                         per_device_eval_batch_size=args.train_batch_size,     
@@ -164,14 +159,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                         save_steps=eval_steps,                 
                         save_total_limit=15,         
                         save_safetensors = False,
-                        learning_rate=2e-4,  
-                        logging_steps=100,
-                        fp16=True,
-                        optim="paged_adamw_8bit",         # 8-bit AdamW optimizer
-                        gradient_accumulation_steps=4,     # MANUAL: Accumulate gradients (adjust based on GPU memory)
-                        warmup_steps=100,
-                        label_smoothing_factor=0.1
-                        
+                        learning_rate=args.learning_rate,  
                                      
                     )
     
@@ -796,3 +784,156 @@ class SaveTopModelsCallback(TrainerCallback):
             th.save(state_dict, model_path)
             print(f"💾 Saved top {rank+1} model to {model_path} with loss {loss:.4f}")
 
+
+
+
+class T5AdapterLightningModule(L.LightningModule):
+    def __init__(self, model, learning_rate=5e-5):
+        super().__init__()
+        self.learning_rate = learning_rate
+        self.model = model
+        
+        # Metrics for sequence generation
+        self.bleu = BLEUScore()
+        self.rouge = ROUGEScore()
+        self.val_loss = torchmetrics.MeanMetric()
+        self.test_loss = torchmetrics.MeanMetric()
+
+    def forward(self, input_ids, attention_mask, labels):
+        return self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels
+        )
+        
+    def training_step(self, batch, batch_idx):
+        outputs = self(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=batch["labels"]
+        )
+        self.log("train_loss", outputs.loss)
+        return outputs.loss
+
+    def validation_step(self, batch, batch_idx):
+        outputs = self(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=batch["labels"]
+        )
+        
+        # Log validation loss
+        self.val_loss(outputs.loss)
+        self.log("val_loss", self.val_loss, prog_bar=True)
+        
+        # Generate predictions for metrics
+        generated_ids = self.model.generate(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            max_length=50
+        )
+        
+        # Decode predictions and references
+        preds = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        refs = [[text] for text in self.tokenizer.batch_decode(
+            batch["labels"], skip_special_tokens=True
+        )]
+        
+        # Calculate metrics
+        self.bleu(preds, refs)
+        self.rouge(preds, refs)
+        self.log("val_bleu", self.bleu, prog_bar=True)
+        self.log("val_rouge", self.rouge, prog_bar=True)
+
+    def test_step(self, batch, batch_idx):
+        outputs = self(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            labels=batch["labels"]
+        )
+        
+        self.test_loss(outputs.loss)
+        self.log("test_loss", self.test_loss)
+        
+        generated_ids = self.model.generate(
+            input_ids=batch["input_ids"],
+            attention_mask=batch["attention_mask"],
+            max_length=50
+        )
+        
+        preds = self.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
+        refs = [[text] for text in self.tokenizer.batch_decode(
+            batch["labels"], skip_special_tokens=True
+        )]
+        
+        self.bleu(preds, refs)
+        self.rouge(preds, refs)
+        self.log("test_bleu", self.bleu)
+        self.log("test_rouge", self.rouge)
+
+    def configure_optimizers(self):
+        # Only optimize adapter parameters
+        optimizer = th.optim.Adam(
+            filter(lambda p: p.requires_grad, self.model.parameters()),
+            lr=self.learning_rate
+        )
+        return optimizer
+    
+
+
+
+        # bnb_config = BitsAndBytesConfig(
+    #     load_in_4bit=True,  # Enable 4-bit quantization
+    #     bnb_4bit_quant_type="nf4",  # Normal Float 4 quantization
+    #     bnb_4bit_use_double_quant=True,  # Nested quantization for better memory efficiency
+    #     bnb_4bit_compute_dtype=th.bfloat16  # Computation dtype
+    # )
+    
+    # # Apply QLoRA to the model
+    # model = prepare_model_for_kbit_training(model)
+
+    #  # LoRA Configuration - Optimized for T5 architecture
+    # lora_config = LoraConfig(
+    #     r=16,  # Slightly higher rank for generation tasks
+    #     lora_alpha=32,
+    #     target_modules=["q", "v", "wi", "wo"],  # T5-specific modules
+    #     lora_dropout=0.05,
+    #     bias="none",
+    #     task_type="SEQ_2_SEQ_LM"  # Specific for T5 sequence-to-sequence
+    # )
+    
+    # model = get_peft_model(model, lora_config)
+    # model.print_trainable_parameters()  # Show which parameters are trainable
+
+    
+    # # ---- Adapter Configuration ----
+    # # Define your adapter configuration
+    # adapter_config = AdapterConfig.load(
+    #     "pfeiffer",  # Adapter architecture type
+    #     reduction_factor=16,  # Similar to LoRA's 'r' (bottleneck size)
+    #     non_linearity="relu",
+    #     leave_out=[]
+    # )
+    
+    # # Add adapter to the model
+    # model.add_adapter("essay_scoring", config=adapter_config)
+    
+    # # Activate the adapter for training
+    # model.train_adapter("essay_scoring")
+    # model.set_active_adapters("essay_scoring")
+    
+    # # Freeze all weights except adapters
+    # model.freeze_model(True)
+    
+    # Print trainable parameters
+    # total_params = sum(p.numel() for p in model.parameters())
+    # trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    # print(f"Total parameters: {total_params:,}")
+    # print(f"Trainable parameters: {trainable_params:,} ({trainable_params/total_params:.2%})")
+
+                        #     fp16=True,
+                        # optim="paged_adamw_8bit",         # 8-bit AdamW optimizer
+                        # gradient_accumulation_steps=4,     # MANUAL: Accumulate gradients (adjust based on GPU memory)
+                        # warmup_steps=100,
+                        # label_smoothing_factor=0.1
+                        

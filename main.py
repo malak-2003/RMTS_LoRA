@@ -1,6 +1,7 @@
 import os
 import argparse
 import torch as th
+import torch.nn as nn
 from utils import *
 from models.customized_modeling_t5 import CustomizedT5ForConditionalGeneration
 from transformers import T5Tokenizer,  BitsAndBytesConfig, T5ForConditionalGeneration
@@ -19,7 +20,7 @@ def main(args):
     set_seed(args)
 
 
-    flag=False
+    flag=True
 
     if not flag:
         print("🌐 Online Run")
@@ -99,21 +100,73 @@ def main(args):
 
     for fold in range(1):
         print(f"🚀 Begining of Fold Number:{fold}")
-        # model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
+        model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
+        print("Total number of trainable parameters:", count_parameters(model))
+        # print(model)
+        total_size = 0
+        bottleneck_size = 32  # hyperparameter
+        # For T5 Encoder blocks
+        for block_idx in range(len(model.encoder.block)):
+            block = model.encoder.block[block_idx]
+            
+            # 1. Self-Attention output adapter
+            orig_sa_out = block.layer[0].SelfAttention.o
+            adapter_sa = make_adapter(
+                in_dim=orig_sa_out.out_features,
+                bottleneck_dim=bottleneck_size,
+                out_dim=orig_sa_out.out_features
+            )
+            block.layer[0].SelfAttention.o = nn.Sequential(orig_sa_out, adapter_sa)
+            total_size += count_parameters(adapter_sa)
+            
+            # 2. FFN output adapter
+            orig_ffn = block.layer[1].DenseReluDense.wo
+            adapter_ffn = make_adapter(
+                in_dim=orig_ffn.out_features,
+                bottleneck_dim=bottleneck_size,
+                out_dim=orig_ffn.out_features
+            )
+            block.layer[1].DenseReluDense.wo = nn.Sequential(orig_ffn, adapter_ffn)
+            total_size += count_parameters(adapter_ffn)
 
-        bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_compute_dtype=th.bfloat16
-    )
-    
-    # Reload the model with quantization config
-        model = T5ForConditionalGeneration.from_pretrained(
-        "t5-base",
-        quantization_config=bnb_config,  # THIS is where bnb_config gets used
-        device_map="auto"
-    )
+        # For T5 Decoder blocks (similar structure but with cross-attention)
+        for block_idx in range(len(model.decoder.block)):
+            block = model.decoder.block[block_idx]
+            
+            # 1. Self-Attention output adapter
+            orig_sa_out = block.layer[0].SelfAttention.o
+            adapter_sa = make_adapter(
+                in_dim=orig_sa_out.out_features,
+                bottleneck_dim=bottleneck_size,
+                out_dim=orig_sa_out.out_features
+            )
+            block.layer[0].SelfAttention.o = nn.Sequential(orig_sa_out, adapter_sa)
+            total_size += count_parameters(adapter_sa)
+            
+            # 2. Cross-Attention output adapter
+            orig_ca_out = block.layer[1].EncDecAttention.o
+            adapter_ca = make_adapter(
+                in_dim=orig_ca_out.out_features,
+                bottleneck_dim=bottleneck_size,
+                out_dim=orig_ca_out.out_features
+            )
+            block.layer[1].EncDecAttention.o = nn.Sequential(orig_ca_out, adapter_ca)
+            total_size += count_parameters(adapter_ca)
+            
+            # 3. FFN output adapter
+            orig_ffn = block.layer[2].DenseReluDense.wo
+            adapter_ffn = make_adapter(
+                in_dim=orig_ffn.out_features,
+                bottleneck_dim=bottleneck_size,
+                out_dim=orig_ffn.out_features
+            )
+            block.layer[2].DenseReluDense.wo = nn.Sequential(orig_ffn, adapter_ffn)
+            total_size += count_parameters(adapter_ffn)
+        
+        print("Total adapter parameters added:", total_size)
+        print("Total number of trainable parameters:", count_parameters(model))
+   
+  
         
         model.use_rationale = True
 
@@ -325,3 +378,23 @@ if __name__ == "__main__":
         #     pickle.dump(best_fold_result_dict, f)
 
     
+
+
+  
+
+
+
+
+    #     bnb_config = BitsAndBytesConfig(
+    #     load_in_4bit=True,
+    #     bnb_4bit_quant_type="nf4",
+    #     bnb_4bit_use_double_quant=True,
+    #     bnb_4bit_compute_dtype=th.bfloat16
+    # )
+    
+    # Reload the model with quantization config
+    #     model = T5ForConditionalGeneration.from_pretrained(
+    #     "t5-base",
+    # #     quantization_config=bnb_config,  # THIS is where bnb_config gets used
+    # #     device_map="auto"
+    #  )
