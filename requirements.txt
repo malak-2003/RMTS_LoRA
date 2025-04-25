@@ -1,11 +1,12 @@
 scikit-learn            
 scipy
 tqdm
-transformers==4.37.2
+transformers==4.30.0
+tokenizers==0.13.3
+adapter-transformers==3.0.1
 datasets
 numpy
 pandas
 accelerate
-lightning
-torchmetrics
+
 
