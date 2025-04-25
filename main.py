@@ -239,7 +239,7 @@ if __name__ == "__main__":
         parser.add_argument('--train_batch_size', '-trb', type=int, default=4, help='batch_size')
         parser.add_argument('--test_batch_size', '-teb', type=int, default=128, help='test_batch_size')
         parser.add_argument('--seed', '-s', type=int, default=40, help='random seed')
-        parser.add_argument('--patience', '-p', type=int, default=10, help='number of patience for early stopping')
+        parser.add_argument('--patience', '-p', type=int, default=3, help='number of patience for early stopping')
         parser.add_argument("--train_epochs", type=int, default=15)
         parser.add_argument("--save_checkpoint_path", type=str, default=None) 
         parser.add_argument("--test", type=bool, default=False)

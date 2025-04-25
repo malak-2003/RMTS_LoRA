@@ -1,12 +1,27 @@
-scikit-learn            
+
+# Core ML/NLP requirements
+numpy==1.26.4
+scikit-learn
 scipy
 tqdm
+pandas
+
+# Hugging Face ecosystem
 transformers==4.30.0
 tokenizers==0.13.3
 adapter-transformers==3.0.1
 datasets
-numpy
-pandas
 accelerate
 
 
+
+# scikit-learn            
+# scipy
+# tqdm
+# transformers==4.30.0
+# tokenizers==0.13.3
+# adapter-transformers==3.0.1
+# datasets
+# numpy
+# pandas
+# accelerate

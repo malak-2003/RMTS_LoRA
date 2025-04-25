@@ -34,20 +34,47 @@ from transformers.modeling_outputs import (
     Seq2SeqModelOutput,
 )
 from transformers.modeling_utils import PreTrainedModel
-from transformers.pytorch_utils import (
-    ALL_LAYERNORM_LAYERS,
-    find_pruneable_heads_and_indices,
-    prune_linear_layer,
-)
-from transformers.utils import (
-    DUMMY_INPUTS,
-    DUMMY_MASK,
-    add_start_docstrings,
-    add_start_docstrings_to_model_forward,
-    is_torch_fx_proxy,
-    logging,
-    replace_return_docstrings,
-)
+
+from transformers.models.t5.modeling_t5 import T5LayerNorm
+from torch.nn import LayerNorm
+ALL_LAYERNORM_LAYERS = (LayerNorm, T5LayerNorm)
+
+try:
+    # For transformers >= 4.31.0
+    from transformers.utils import (
+        find_pruneable_heads_and_indices,
+        prune_linear_layer,
+    )
+except ImportError:
+    # For transformers <= 4.30.0
+    from transformers.modeling_utils import (
+        find_pruneable_heads_and_indices,
+        prune_linear_layer,
+    )
+
+# from transformers.pytorch_utils import (
+#     find_pruneable_heads_and_indices,
+#     prune_linear_layer,
+# )
+
+from transformers.file_utils import (
+        DUMMY_INPUTS,
+        DUMMY_MASK,
+        add_start_docstrings,
+        add_start_docstrings_to_model_forward,
+        is_torch_fx_proxy,
+    )
+from transformers import logging
+from transformers.modeling_utils import replace_return_docstrings
+# from transformers.utils import (
+#     DUMMY_INPUTS,
+#     DUMMY_MASK,
+#     add_start_docstrings,
+#     add_start_docstrings_to_model_forward,
+#     is_torch_fx_proxy,
+#     logging,
+#     replace_return_docstrings,
+# )
 from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
 from transformers.models.t5.configuration_t5 import T5Config
 
@@ -292,7 +319,8 @@ except Exception:
     logger.warning("discovered apex but it failed to load, falling back to T5LayerNorm")
     pass
 
-ALL_LAYERNORM_LAYERS.append(T5LayerNorm)
+# ALL_LAYERNORM_LAYERS.append(T5LayerNorm)
+ALL_LAYERNORM_LAYERS = (LayerNorm, T5LayerNorm)
 
 
 class T5DenseActDense(nn.Module):
