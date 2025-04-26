@@ -14,50 +14,11 @@ from peft import get_peft_model, LoraConfig, prepare_model_for_kbit_training
 warnings.filterwarnings("ignore")
 
 def main(args):
-    """
-    📝 General Notes:
 
-    Dynamic arguments 
-    args.result_path: asap/t5-base  -- saves results?
-    args.save_model_path: ckpts_asap/t5-base -- saves checkpoints?
-    args.device: cpu -- what it does idk 
-
-    Used Emojis 🙃:
-     ✅ 🆘 🕵🏻 📌 👀 🔄 🛠️ 😊 😮‍💨 🚶 📍 📶 💾 💡 🔧 🤔 📟 📃 🚀 🏋️‍♂️ 📤 🚨 🧠 🗂️ 🟡 🔵 🧮 🏗️ 💻 🌐
-
-    
-    """
     print("🦾 THE BIG BOSS")
     set_seed(args)
 
 
-    """
-
-    if args.online_run:
-        print("🌐 Online Run")
-         # Drive Save
-        # 🕵🏻🆘 Set base directory to your Google Drive path
-        drive_base_dir = "/content/drive/MyDrive"  # Change this if you're using a different path
-
-        # 🕵🏻🆘 Full path for saving checkpoints
-        checkpoint_dir = os.path.join(drive_base_dir, f"ckpts_{args.result_path}")
-        
-
-    #     # 🕵🏻🆘 Create directory if it doesn't exist
-    #     if not os.path.isdir(checkpoint_dir):
-    #         os.makedirs(checkpoint_dir)
-    #         print(f"🗂️ New folder created on Drive: {checkpoint_dir}")
-
-    #     # 🕵🏻🆘 Save path for training
-    #     args.save_model_path = checkpoint_dir
-
-    #     # 🕵🏻🆘 Update load path if in test mode
-    #     if args.test:
-    #         args.load_checkpoint_path = checkpoint_dir
-    #         print(f"🧪 In Test Mode — Loading from: {args.load_checkpoint_path}")
-
-
-    """
     
     print("💻 Offline Run")
         
@@ -140,48 +101,13 @@ def main(args):
         train_data = read_data(TRAIN_DATA_PATH)
         dev_data = read_data(DEV_DATA_PATH)
         test_data = read_data(TEST_DATA_PATH)
-        """
-        🕵🏻✅ Malak: For testing reading of data : it reads data correctly + length of enteries are correct
-        # Print number of entries
-        print(f"\nTotal number of entries: {len(train_data)}")
-
-
-        # Print first entry with each column on a separate line
-        first_entry = train_data[0]
-        print("\nFirst entry:")
-        for col, val in first_entry.items():
-          print(f"{col}: {val}")
-        """
+ 
         train_dataset = train_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
         dev_dataset = dev_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
         test_dataset = test_data.map(lambda x: preprocess_data(x, tokenizer,args), batched=True)
 
 
-        """
-        🕵🏻✅ Malak: For testing processing of data : it reads processes data correctly 
 
-        #Checking the encoded entry 
-        print(tokenizer.decode(train_dataset["input_ids"][0]))
-        print(tokenizer.decode(train_dataset["labels"][0]))
-
-        
-        # Number of examples processed
-        print(len(train_dataset["input_ids"])) 
-        print(len(train_dataset["labels"])) 
-
-        📌 Summary of Function (preprocess_data)
- 
-        Tokenize Essay and Rationale: The essay and rationale (either GPT or Llama) are tokenized separately and then concatenated.
-
-        Tokenize Labels: The output labels (like scores) are tokenized based on the model type.
-
-        Combine Data: Both the essay input and rationale are merged into a single input sequence, and labels are prepared for the model.
-        x represents a batch of examples
-
-        
-        The batched= True argument means that preprocess_data will be applied to the data in batches, not one sample at a time, which is more efficient.
-
-        """
         if not args.test:
             print(f"🏋️‍♂️ Training Fold : {fold}")
             model = train(model, tokenizer, train_dataset, dev_dataset, args)
@@ -330,3 +256,7 @@ if __name__ == "__main__":
         #     pickle.dump(best_fold_result_dict, f)
 
     
+
+
+
+ 

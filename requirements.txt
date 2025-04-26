@@ -6,5 +6,6 @@ datasets
 numpy
 pandas
 accelerate
+peft
 
 

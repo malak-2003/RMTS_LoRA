@@ -11,15 +11,13 @@ from tqdm import tqdm
 from evaluation import quadratic_weighted_kappa
 import warnings
 import traceback
-from peft import get_peft_model, LoraConfig, TaskType
+from peft import get_peft_model, LoraConfig
 
 warnings.filterwarnings("ignore")
 
-# NOT Tested 🕵🏻🆘
+
 def set_seed(args):
-    """
-    Ensure reproducibility by setting the seed for random number generation.
-    """
+
     np.random.seed(args.seed)
     random.seed(args.seed)
     if th.cuda.is_available():
@@ -29,10 +27,8 @@ def set_seed(args):
         th.backends.cudnn.deterministic = True
         th.backends.cudnn.benchmark = False
 
-# Tested 🕵🏻✅
-def read_data(data_path):
 
-    print("👀 Read data -- utils")
+def read_data(data_path):
     
     df = pd.read_csv(data_path)
     
@@ -42,9 +38,6 @@ def read_data(data_path):
 
 # Tested 🕵🏻✅
 def preprocess_data(examples, tokenizer,args):
-
-    print("🔄 Preprocessing Data -- utils")
-
     
     essay = tokenizer([ "<essay> "+ example for example in examples["t5_input"]], max_length=512, truncation=True, padding="max_length")
     
@@ -81,10 +74,7 @@ def preprocess_data(examples, tokenizer,args):
 
 
 def print_trainable_parameters(model):
-    """
-    Prints the number of trainable parameters in the model.
-    Useful when using PEFT methods like LoRA to confirm only adapter layers are trainable.
-    """
+
     trainable = 0
     total = 0
     for name, param in model.named_parameters():
@@ -100,60 +90,43 @@ def print_trainable_parameters(model):
 # Tested 🕵🏻✅
 def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
+    # Add this before calling get_peft_model()
+    for name, module in model.named_modules():
+     if "decoder" in name and ("attention" in name or "q_proj" in name):
+        print(name)
 
-    """
-    📝 Train Method Notes 
-    
-    📶 Training Steps: During training, the model processes batches of data (training steps).
-
-    📶 Evaluation Steps: After every eval_steps training steps, the model is evaluated on a validation dataset, and metrics (e.g., loss, accuracy) are computed. 
-    This helps you monitor the model's performance during training.
-    Evaluations can be linked to checkpoints, meaning the model will be saved after each evaluation step.
-
-    """
-        
-    """
-    🛠️ Fine-Tuning Part of the Code 
-
-    # Apply LoRA to the model -- Way 1 (ChatGPT) 
-    model = get_peft_model(model, lora_config)
-
-    # Apply LoRA to the model -- Way 2 (Github)
-    # Link 🔗:(https://gitlab.com/CeADARIreland_Public/llm-resources/-/blob/main/fine_tuning_template_script.py?ref_type=heads) 
-    peft_config=lora_config,  -- put line inside trainer
-
-    """
-   
-
-
+    # 1. Configure LoRA ONLY for the decoder
     lora_config = LoraConfig(
-        r=64,
-        lora_alpha=32,
+        r=32,
+        lora_alpha=64,
         lora_dropout=0.1,
-      
-        task_type="SEQ_2_SEQ_LM"
+        task_type="SEQ_2_SEQ_LM",
+       
     )
-    # you don't need to manually unfreeze LoRA layers — get_peft_model() does that for the modules listed in target_modules.
 
-
-
-
+    # 2. Apply LoRA to the model
     model = get_peft_model(model, lora_config)
+
+    # 3. Freeze ONLY LoRA params in encoder (not original weights)
     for name, param in model.named_parameters():
-        if 'encoder' in name:
-            param.requires_grad = False
-        elif 'decoder' in name:
-            param.requires_grad = True
-# LoRA adapters are automatically marked trainable by PEFT
+        if "lora" in name and "encoder" in name:
+            param.requires_grad = False  # Freeze encoder LoRA
+        elif "encoder" in name and "lora" not in name:
+            param.requires_grad = True   # Unfreeze original encoder weights
+
+    # 4. Verify setup
+    print("Trainable parameters:")
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            print(f"- {name}")
+
 
     model.print_trainable_parameters()
     print_trainable_parameters(model)
 
-
-
     if args.data == "asap":
         eval_steps = int(np.ceil(5000/(args.train_batch_size/4)))
-        # eval_steps= 500
+    
         
     else:
         eval_steps = 1600
@@ -161,26 +134,13 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     print("🚶 Size of eval_steps: ", eval_steps)
     print(f"📍 Result path:{args.result_path}")
 
-    """
-    📝 Notes on arguments: 
-    save_total_limit -- means only the 15 most recent checkpoints will be kept on disk
-    logging_steps -- controls how often training logs are printed — like loss, learning rate, etc.
-        logging_dir='./logs',  # Optional, for TensorBoard
-    """
-    # These are the settings that control the training behavior. 
-    # fp16=True, for qlora
-    output_dir_path= ""
 
-    if args.online_run:
-        output_dir_path="/content/drive/MyDrive/QLoRA_Checkpoints"
-    else:
+
         
-        output_dir_path=f"./{args.result_path}"
-    
     print("📁 Should save in drive")
     training_args = Seq2SeqTrainingArguments(
-                        output_dir=output_dir_path,           
-                        evaluation_strategy="steps",      
+                        output_dir=f"./{args.result_path}",           
+                        eval_strategy="steps",      
                         eval_steps=eval_steps,                
                         per_device_train_batch_size=args.train_batch_size,    
                         per_device_eval_batch_size=args.train_batch_size,     
@@ -194,7 +154,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                         save_safetensors = False,
                         learning_rate=args.learning_rate,  
                         logging_steps=100,
-                        fp16=True,
+                        
                         
                                      
                     )
@@ -222,23 +182,11 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 # 🔄 Testing in process
 from torch.nn import functional as F
 def asap_test(tokenizer, model, test_data, args):
-
-#Input Parameters
-#tokenizer – Tokenizer object for converting input text into token IDs.
-#model – Fine-tuned transformer model (T5, BART, Pegasus, or LED).
-#test_data – Test dataset containing essay inputs and ground-truth scores.
-#args – Configuration parameters (e.g., device type, model name).
-
-#Output
-#qwk_result – Dictionary storing QWK scores for each trait of each essay prompt.
-#pred_dic – Dictionary storing predicted trait scores for each prompt.
-#true_dic – Dictionary storing ground-truth trait scores.
     print("Begining of ASAP test 🧠")
-#    These dictionaries will store predictions (pred_dic), actual scores (true_dic), and QWK results (qwk_result) for each essay prompt.
     pred_dic = dict()
     true_dic = dict()
     qwk_result = dict()
-#    Each prompt (1-8) has specific writing traits to be evaluated.
+
     trait_map = {
     1: ["overall", "content", "organization", "word choice", "sentence fluency", "conventions"],
     2: ["overall", "content", "organization", "word choice", "sentence fluency", "conventions"],
@@ -249,13 +197,13 @@ def asap_test(tokenizer, model, test_data, args):
     7: ["overall", "content", "organization", "style", "conventions"],
     8: ["overall", "content", "organization", "voice", "word choice", "sentence fluency", "conventions"]
     }
-#    Handles compound trait names by replacing spaces with hyphens
+
     compound_keys = {
     'sentence fluency': 'sentence-fluency',
     'word choice': 'word-choice',
     'prompt adherence': 'prompt-adherence'
     }
-#    Initializes dictionaries to store predictions, true labels, and QWK scores for each trait in each prompt.
+
     for p in range(1,9):
         print("🗂️ Initializes dictionaries to store predictions")
         pred_dic[p] = dict()
@@ -267,10 +215,9 @@ def asap_test(tokenizer, model, test_data, args):
             true_dic[p][trait] = list()
             qwk_result[p][trait] = 0.0
 
-# The model is set to evaluation mode
     model.eval()
-#   Uses torch.no_grad() to disable gradient computation (since we're testing).Loops through the test dataset in batches of 128 essays.
     batch_size = 128
+
     with th.no_grad():
         for i in tqdm(range(0, len(test_data), batch_size)):
             test = test_data[i:i+batch_size]
@@ -318,8 +265,7 @@ def asap_test(tokenizer, model, test_data, args):
                 
                 
                 try:
-                    
-
+            
                     #Parses the predicted scores into a dictionary.
                     pred_text = pred
                     for key, replacement in compound_keys.items():
