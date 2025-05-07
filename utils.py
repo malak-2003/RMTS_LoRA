@@ -12,6 +12,7 @@ from evaluation import quadratic_weighted_kappa
 import warnings
 import traceback
 from peft import get_peft_model, LoraConfig
+from torch.optim import AdamW  # AdamW is the standard Adam variant with weight decay fix
 
 warnings.filterwarnings("ignore")
 
@@ -99,26 +100,45 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     lora_config = LoraConfig(
         r=32,
         lora_alpha=64,
+        target_modules=["q", "v"], 
         lora_dropout=0.1,
         task_type="SEQ_2_SEQ_LM",
+        modules_to_save=None,
        
     )
 
     # 2. Apply LoRA to the model
     model = get_peft_model(model, lora_config)
 
-    # 3. Freeze ONLY LoRA params in encoder (not original weights)
+    # 3. Freezing Strategy:
+    # - Keep encoder weights **fully trainable** (no freezing)
+    # - Freeze original decoder weights (only train LoRA adapters)
     for name, param in model.named_parameters():
-        if "lora" in name and "encoder" in name:
-            param.requires_grad = False  # Freeze encoder LoRA
-        elif "encoder" in name and "lora" not in name:
-            param.requires_grad = True   # Unfreeze original encoder weights
+        if "encoder" in name:
+            param.requires_grad = True   # Unfreeze entire encoder
+        elif "decoder" in name and "lora" not in name:
+            param.requires_grad = False  # Freeze original decoder weights
+        elif "lora" in name:
+            param.requires_grad = True   # Train only decoder LoRA adapters
 
-    # 4. Verify setup
-    print("Trainable parameters:")
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            print(f"- {name}")
+        # 4. Custom Optimizer Groups
+    optimizer_groups = [
+        {
+            "params": [p for n, p in model.named_parameters() if "encoder" in n and p.requires_grad],
+            "lr": 5e-05,  # Higher LR for encoder
+        },
+        {
+            "params": [p for n, p in model.named_parameters() if "lora" in n and p.requires_grad],
+            "lr": 3e-05,  # Lower LR for LoRA
+        },
+    ]
+    optimizer = AdamW(optimizer_groups, betas=(0.9, 0.999))
+
+    # # 4. Verify setup
+    # print("Trainable parameters:")
+    # for name, param in model.named_parameters():
+    #     if param.requires_grad:
+    #         print(f"- {name}")
 
 
     model.print_trainable_parameters()
@@ -136,7 +156,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
 
 
-        
+        #  learning_rate=args.learning_rate,  
     print("📁 Should save in drive")
     training_args = Seq2SeqTrainingArguments(
                         output_dir=f"./{args.result_path}",           
@@ -150,9 +170,10 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                         metric_for_best_model="loss",     
                         greater_is_better=False,          
                         save_steps=eval_steps,                 
-                        save_total_limit=15,         
+                        save_total_limit=2,         
                         save_safetensors = False,
-                        learning_rate=args.learning_rate,  
+                        fp16=True,
+                        optim="paged_adamw_8bit",  # Fallback if custom optimizer fails
                         logging_steps=100,
                         
                         
@@ -166,6 +187,7 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
                 train_dataset=train_dataset,
                 eval_dataset=dev_dataset,
                 tokenizer=tokenizer,
+                optimizers=(optimizer, None),
                 callbacks=[EarlyStoppingCallback(early_stopping_patience=args.patience), SaveTopModelsCallback(args.save_model_fold_path)]
  
     )

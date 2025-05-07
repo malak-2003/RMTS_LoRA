@@ -73,7 +73,28 @@ def main(args):
 
     for fold in range(1):
         print(f"🚀 Begining of Fold Number:{fold}")
-        model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
+        
+        #Define quantization config for QLoRA
+        bnb_config = BitsAndBytesConfig(
+          load_in_4bit=True,
+          bnb_4bit_compute_dtype=th.float16,  # or torch.bfloat16 if supported
+          bnb_4bit_use_double_quant=True,
+          bnb_4bit_quant_type="nf4"
+        )
+
+        #Load base model in 4-bit
+        model = CustomizedT5ForConditionalGeneration.from_pretrained(
+          args.model_name,
+          quantization_config=bnb_config,
+         
+        )
+
+        #Prepare model for k-bit training (adds layernorm casting, input gradient tracking)
+        model = prepare_model_for_kbit_training(model)
+
+
+
+        # model = CustomizedT5ForConditionalGeneration.from_pretrained(args.model_name)
         
         model.use_rationale = True
 
