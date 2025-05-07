@@ -90,10 +90,6 @@ def print_trainable_parameters(model):
 # Tested 🕵🏻✅
 def train(model, tokenizer, train_dataset, dev_dataset, args=None):
 
-    # Add this before calling get_peft_model()
-    for name, module in model.named_modules():
-     if "decoder" in name and ("attention" in name or "q_proj" in name):
-        print(name)
 
     # 1. Configure LoRA ONLY for the decoder
     lora_config = LoraConfig(
@@ -107,12 +103,12 @@ def train(model, tokenizer, train_dataset, dev_dataset, args=None):
     # 2. Apply LoRA to the model
     model = get_peft_model(model, lora_config)
 
-    # 3. Freeze ONLY LoRA params in encoder (not original weights)
+    # 3. EXPLICITLY ensure Qformer remains trainable
     for name, param in model.named_parameters():
-        if "lora" in name and "encoder" in name:
-            param.requires_grad = False  # Freeze encoder LoRA
-        elif "encoder" in name and "lora" not in name:
-            param.requires_grad = True   # Unfreeze original encoder weights
+        if "Qformer" in name:
+            param.requires_grad = True  # Force unfreeze
+
+
 
     # 4. Verify setup
     print("Trainable parameters:")
